@@ -94,6 +94,7 @@ function updateGuest(name) {
   node.querySelector('small').textContent = name ? 'Player two' : 'Send the private invite link';
   node.querySelector('.seat-status').textContent = name ? 'Connected' : 'Empty';
   $('#seat-count').textContent = name ? '2 of 2 seats filled' : '1 of 2 seats filled';
+  $('#reset-seat').classList.toggle('hidden', !name || state.role !== 'host');
 }
 
 function connectSignaling() {
@@ -124,9 +125,15 @@ function connectSignaling() {
       if (state.pc?.connectionState !== 'connected') connectionLost();
     } else if (message.type === 'room.expired') {
       toast('This room has closed.'); setTimeout(() => location.assign('/'), 1200);
+    } else if (message.type === 'guest.removed') {
+      if (state.role === 'guest') location.assign('/');
+      else updateGuest(null);
     }
   };
-  ws.onclose = () => { if (state.ws === ws && state.roomId) setTimeout(connectSignaling, 1200); };
+  ws.onclose = (event) => {
+    if (event.code === 4002) { state.roomId = null; location.assign('/'); return; }
+    if (state.ws === ws && state.roomId) setTimeout(connectSignaling, 1200);
+  };
 }
 
 async function flushIce() {
@@ -447,6 +454,16 @@ async function copyInvite() {
   toast('Invite copied — send it to your friend.');
 }
 
+async function resetGuestSeat() {
+  const result = await api(`/api/rooms/${state.roomId}/guest`, { method: 'DELETE', body: '{}' });
+  state.inviteSecret = result.secret;
+  sessionStorage.setItem(`quarterlink.invite.${state.roomId}`, state.inviteSecret);
+  state.pc?.close(); state.pc = null; state.control = null; state.input = null;
+  state.peerConnected = false; state.guestReady = false; state.guestDeviceReady = false;
+  updateGuest(null); updateReady();
+  toast('Player two removed. A fresh invite link is ready.');
+}
+
 document.addEventListener('click', (event) => {
   const action = event.target.closest('[data-action]')?.dataset.action; if (!action) return;
   if (action === 'open-host') show('setup');
@@ -455,6 +472,7 @@ document.addEventListener('click', (event) => {
   if (action === 'create-room') createRoom();
   if (action === 'join-room') joinRoom();
   if (action === 'copy-invite') copyInvite();
+  if (action === 'reset-seat') resetGuestSeat().catch((error) => toast(error.message));
   if (action === 'load-demo') loadDemo().catch((error) => toast(error.message));
   if (action === 'start-game') startGame().catch((error) => { toast(error.message); show('room'); });
   if (action === 'enable-media') enableMedia().catch(() => toast('Sound is still blocked. Check the browser site controls.'));

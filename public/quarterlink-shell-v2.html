@@ -18,7 +18,7 @@
   <div class="noise" aria-hidden="true"></div>
   <header class="site-header">
     <a class="brand" href="/" aria-label="QuarterLink home"><span class="coin">Q</span><span>QuarterLink</span></a>
-    <div class="header-status"><span class="status-dot"></span><span>Private rooms · Direct play</span></div>
+    <div class="header-status"><span class="status-dot"></span><span>Private rooms · Encrypted play</span></div>
   </header>
 
   <main id="app">
@@ -35,8 +35,8 @@
       </div>
       <div class="connection-card" aria-label="Live connection preview">
         <div class="screen-glow"></div>
-        <div class="player p1"><span class="avatar">P1</span><div><strong>You</strong><small>Ready in Tirana</small></div></div>
-        <div class="link-line"><i></i><span>18 ms</span><i></i></div>
+        <div class="player p1"><span class="avatar">P1</span><div><strong>You</strong><small>Host browser</small></div></div>
+        <div class="link-line"><i></i><span>Encrypted peer link</span><i></i></div>
         <div class="player p2"><span class="avatar">P2</span><div><strong>Your friend</strong><small>One link away</small></div></div>
         <div class="game-chip"><span class="pixel-ship">▰</span><div><small>TONIGHT'S RUN</small><strong>Metal Slug 2</strong></div><b>2P</b></div>
       </div>
@@ -64,7 +64,7 @@
         <label class="field"><span>Your display name</span><input id="guest-name" maxlength="24" autocomplete="nickname" placeholder="Emre"></label>
         <label id="code-field" class="field hidden"><span>Private invite link</span><input id="room-code" autocomplete="off" inputmode="url" placeholder="Paste the complete invite link"></label>
         <button class="button primary full" data-action="join-room">Join room <span>→</span></button>
-        <p class="trust"><span>◈</span> Direct encrypted connection · No account required</p>
+        <p class="trust"><span>◈</span> Encrypted connection · No account required</p>
         <p id="join-error" class="form-error" role="alert"></p>
       </div>
     </section>
@@ -83,7 +83,7 @@
         <div class="panel readiness">
           <div class="ready-head"><div><small>PLAYERS</small><strong id="seat-count">1 of 2 seats filled</strong></div><span id="room-state" class="pill amber">Waiting</span></div>
           <div class="seat ready" id="host-seat"><span class="avatar">P1</span><div><strong id="host-display">Host</strong><small>Room host</small></div><span class="seat-status">Connected</span></div>
-          <div class="seat empty" id="guest-seat"><span class="avatar">P2</span><div><strong>Waiting for your friend</strong><small>Send the private invite link</small></div><span class="seat-status">Empty</span></div>
+          <div class="seat empty" id="guest-seat"><span class="avatar">P2</span><div><strong>Waiting for your friend</strong><small>Send the private invite link</small></div><span class="seat-status">Empty</span><button id="reset-seat" class="button quiet small hidden" data-action="reset-seat">Remove</button></div>
           <hr>
           <div class="checks">
             <div id="check-controller"><i></i><span><strong>Controller</strong><small>Press any button to detect</small></span><b>Checking</b></div>

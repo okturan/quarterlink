@@ -59,6 +59,8 @@ test('room recovery, relay credentials, and websocket origin checks are wired', 
   assert.match(worker, /origin !== url\.origin/);
   assert.match(worker, /sendToOtherRole/);
   assert.match(worker, /Superseded by a newer connection/);
+  assert.match(worker, /async removeGuest/);
+  assert.match(client, /resetGuestSeat/);
   assert.match(worker, /cache-control.*no-store/);
 });
 
@@ -66,6 +68,8 @@ test('join UI asks for the complete private link, not a fake join code', () => {
   assert.match(html, /Use an invite link/);
   assert.match(html, /Paste the complete invite link/);
   assert.doesNotMatch(html, /Join with code|Invite link or room code/);
+  assert.doesNotMatch(html, /18 ms|Ready in Tirana|Direct encrypted connection/);
+  assert.match(html, /Encrypted peer link/);
 });
 
 test('versioned application shell cannot enter Cloudflare HTML redirect normalization', () => {

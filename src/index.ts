@@ -110,6 +110,24 @@ export class GameRoom extends DurableObject<Env> {
 		return { secret };
 	}
 
+	async removeGuest(session: string): Promise<{ secret: string } | null> {
+		const room = await this.state();
+		if (!room || room.peers.host?.session !== session || !room.peers.guest) return null;
+		delete room.peers.guest;
+		room.phase = "waiting";
+		room.inviteUsed = false;
+		const secret = randomToken(24);
+		room.inviteHash = await sha256(secret);
+		await this.ctx.storage.put("room", room);
+		for (const socket of this.ctx.getWebSockets()) {
+			if (this.sockets.get(socket) === "guest") {
+				try { socket.close(4002, "Removed by host"); } catch { /* already closed */ }
+			}
+		}
+		this.broadcast({ type: "guest.removed" });
+		return { secret };
+	}
+
 	async snapshot(session: string): Promise<{ room: Omit<RoomState, "inviteHash" | "peers"> & { peers: Partial<Record<Role, Omit<Peer, "session">>> }; role: Role } | null> {
 		const room = await this.state();
 		if (!room) return null;
@@ -247,6 +265,14 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
 		if (!session) return json({ error: "Unauthorized" }, { status: 401 });
 		const result = await env.GAME_ROOMS.getByName(inviteMatch[1]).rotateInvite(session);
 		return result ? json(result) : json({ error: "Invite cannot be rotated" }, { status: 409 });
+	}
+
+	const guestMatch = url.pathname.match(/^\/api\/rooms\/([A-Za-z0-9_-]+)\/guest$/);
+	if (guestMatch && request.method === "DELETE") {
+		const session = cookieValue(request);
+		if (!session) return json({ error: "Unauthorized" }, { status: 401 });
+		const result = await env.GAME_ROOMS.getByName(guestMatch[1]).removeGuest(session);
+		return result ? json(result) : json({ error: "Guest cannot be removed" }, { status: 409 });
 	}
 
 	const iceMatch = url.pathname.match(/^\/api\/rooms\/([A-Za-z0-9_-]+)\/ice$/);

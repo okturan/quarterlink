@@ -5,6 +5,7 @@ import test from 'node:test';
 const html = await readFile(new URL('../public/quarterlink-26df085.html', import.meta.url), 'utf8');
 const client = await readFile(new URL('../public/quarterlink.js', import.meta.url), 'utf8');
 const worker = await readFile(new URL('../src/index.ts', import.meta.url), 'utf8');
+const wrangler = await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
 
 test('critical product views and controls are present', () => {
   for (const id of ['landing', 'setup', 'join', 'room', 'loading', 'game', 'game-files', 'quality-pill']) {
@@ -51,4 +52,9 @@ test('join UI asks for the complete private link, not a fake join code', () => {
   assert.match(html, /Use an invite link/);
   assert.match(html, /Paste the complete invite link/);
   assert.doesNotMatch(html, /Join with code|Invite link or room code/);
+});
+
+test('versioned application shell cannot enter Cloudflare HTML redirect normalization', () => {
+  assert.match(worker, /quarterlink-26df085\.html/);
+  assert.match(wrangler, /"html_handling": "none"/);
 });

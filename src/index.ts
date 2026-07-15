@@ -277,7 +277,12 @@ export default {
 	async fetch(request, env): Promise<Response> {
 		const url = new URL(request.url);
 		try {
-			const response = url.pathname.startsWith("/api/") ? await api(request, env, url) : await env.ASSETS.fetch(request);
+			let response: Response;
+			if (url.pathname.startsWith("/api/")) response = await api(request, env, url);
+			else if (request.method === "GET" && request.headers.get("accept")?.includes("text/html")) {
+				const shellUrl = new URL("/quarterlink-26df085.html", url.origin);
+				response = await env.ASSETS.fetch(new Request(shellUrl, request));
+			} else response = await env.ASSETS.fetch(request);
 			return response.status === 101 ? response : securityHeaders(response);
 		} catch (error) {
 			console.error(JSON.stringify({ event: "request_error", path: url.pathname, error: error instanceof Error ? error.message : "unknown" }));

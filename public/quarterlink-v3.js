@@ -1,22 +1,27 @@
 const $ = (selector) => document.querySelector(selector);
 const views = [...document.querySelectorAll('.view')];
 const state = {
+  mode: 'friends',
   roomId: null, role: null, inviteSecret: null, ws: null, pc: null,
   control: null, input: null, peerConnected: false, controllerReady: false,
   gameReady: false, gameTitle: 'Metal Slug 2', guestReady: false, guestDeviceReady: false, romFile: null, biosFile: null, pingSeq: 0, pings: new Map(),
   rtts: [], jitter: 0, packetCount: 0, emulatorLoaded: false, streamStarted: false,
   pendingIce: [], relayAvailable: false, mediaReady: false, receivedTracks: new Set(), reconnectAttempts: 0, peerCreating: null,
+  sourceSelection: 0, creating: false, joining: false, confirmAction: null,
 };
 
 function show(id) {
   views.forEach((view) => view.classList.toggle('hidden', view.id !== id));
   document.body.classList.toggle('playing', id === 'game');
   window.scrollTo({ top: 0, behavior: 'instant' });
+  const title = $(`#${id} h1, #${id} [tabindex="-1"]`);
+  if (title) requestAnimationFrame(() => title.focus({ preventScroll: true }));
+  document.title = id === 'landing' ? 'QuarterLink — Your couch has a second seat' : `${title?.textContent?.trim() || 'QuarterLink'} — QuarterLink`;
 }
 
 function toast(message) {
-  const node = $('#toast'); node.textContent = message; node.classList.add('show');
-  clearTimeout(toast.timer); toast.timer = setTimeout(() => node.classList.remove('show'), 2400);
+  const node = $('#toast'); node.querySelector('strong').textContent = message; node.classList.add('show');
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => node.classList.remove('show'), 4500);
 }
 
 function setCheck(id, done, label) {
@@ -45,32 +50,62 @@ function parseInvite(value = location.href) {
 async function createRoom() {
   const input = $('#host-name'); const name = input.value.trim();
   $('#setup-error').textContent = '';
+  if (!state.gameReady) { $('#setup-error').textContent = 'Choose your game files or the free test game first.'; return; }
+  if (state.mode === 'solo') { await startSolo(); return; }
+  if (!name) { $('#setup-error').textContent = 'Enter a display name.'; input.focus(); return; }
+  if (state.creating) return;
+  state.creating = true; const button = $('#create-room-button'); button.disabled = true; button.textContent = 'Creating private room…';
   try {
     const result = await api('/api/rooms', { method: 'POST', body: JSON.stringify({ name }) });
     saveName(input); state.roomId = result.roomId; state.inviteSecret = result.inviteSecret; state.role = 'host';
     sessionStorage.setItem(`quarterlink.invite.${state.roomId}`, state.inviteSecret);
     history.replaceState({}, '', `/room/${state.roomId}`); await enterRoom();
   } catch (error) { $('#setup-error').textContent = error.message; }
+  finally { state.creating = false; button.disabled = false; button.textContent = 'Create private room →'; }
 }
 
 async function joinRoom() {
   const input = $('#guest-name'); let invite = parseInvite();
   if (!invite) invite = parseInvite($('#room-code').value.trim());
-  $('#join-error').textContent = '';
-  if (!invite) { $('#join-error').textContent = 'Paste the complete invite link your friend sent.'; return; }
+  showJoinError('');
+  if (!input.value.trim()) { showJoinError('Enter a display name first.'); input.focus(); return; }
+  if (!invite) { showJoinError('Paste the complete invite link your friend sent, including the # section.'); return; }
+  if (state.joining) return;
+  state.joining = true; const button = $('#join-room-button'); button.disabled = true; button.textContent = 'Joining private room…';
   try {
     await api(`/api/rooms/${invite.roomId}/redeem`, { method: 'POST', body: JSON.stringify({ name: input.value.trim(), secret: invite.secret }) });
-    saveName(input); state.roomId = invite.roomId; state.role = 'guest';
+    saveName(input); state.roomId = invite.roomId; state.role = 'guest'; state.mode = 'friends';
     history.replaceState({}, '', `/room/${state.roomId}`); await enterRoom();
   } catch (error) {
-    $('#join-error').textContent = error.message === 'full' ? 'Both seats in this room are already taken.' : 'This invite has clocked out. Ask your friend for a fresh one.';
+    const message = error.message === 'full' ? 'Both seats are already claimed.' : error.message === 'expired' ? 'This invite expired. Ask your friend for a fresh link.' : error.message === 'invalid' ? 'This invite is invalid or has already been used.' : `QuarterLink could not join this room: ${error.message}`;
+    showJoinError(message);
+  } finally {
+    state.joining = false; button.disabled = false; button.textContent = 'Join room →';
   }
+}
+
+function showJoinError(message) {
+  $('#join-error').textContent = message;
+  $('#join-error-card').classList.toggle('hidden', !message);
+}
+
+function openSetup(mode) {
+  state.mode = mode;
+  $('#setup-mode-label').textContent = mode === 'solo' ? 'PLAY SOLO' : 'OPEN A PRIVATE ROOM';
+  $('#setup-title').textContent = mode === 'solo' ? 'Choose your game.' : 'Set up your run.';
+  $('#setup-copy').textContent = mode === 'solo' ? 'The game runs entirely in this browser—no room or connection needed.' : 'Choose a game source, then open a private room.';
+  $('#display-name-step').classList.toggle('hidden', mode === 'solo');
+  $('.source-step .step-number').textContent = mode === 'solo' ? '1' : '2';
+  $('#create-room-button').textContent = mode === 'solo' ? 'Start solo →' : 'Create private room →';
+  show('setup'); startControllerProbe(); updateGamePresentation(); syncSetupButton();
+  if (mode === 'friends') requestAnimationFrame(() => $('#host-name').focus());
 }
 
 async function enterRoom() {
   const snapshot = await api(`/api/rooms/${state.roomId}`);
   state.role = snapshot.role;
   const host = snapshot.room.peers.host; const guest = snapshot.room.peers.guest;
+  state.mode = 'friends';
   $('#host-display').textContent = host?.name || 'Host';
   $('#room-code-display').textContent = state.roomId.slice(0, 4).toUpperCase() + '-' + state.roomId.slice(4, 7).toUpperCase();
   $('#invite-box').classList.toggle('hidden', state.role !== 'host');
@@ -89,10 +124,10 @@ async function enterRoom() {
 
 function updateGuest(name) {
   const node = $('#guest-seat');
-  node.classList.toggle('empty', !name); node.classList.toggle('ready', Boolean(name));
+  node.classList.toggle('empty', !name); node.classList.toggle('occupied', Boolean(name));
   node.querySelector('strong').textContent = name || 'Waiting for your friend';
-  node.querySelector('small').textContent = name ? 'Player two' : 'Send the private invite link';
-  node.querySelector('.seat-status').textContent = name ? 'Connected' : 'Empty';
+  node.querySelector('small').textContent = name ? 'Player 2 · Seat claimed' : 'Send the private invite link';
+  node.querySelector('.seat-status').textContent = name ? 'Joined' : 'Empty';
   $('#seat-count').textContent = name ? '2 of 2 seats filled' : '1 of 2 seats filled';
   $('#reset-seat').classList.toggle('hidden', !name || state.role !== 'host');
 }
@@ -102,7 +137,7 @@ function connectSignaling() {
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const ws = new WebSocket(`${protocol}//${location.host}/api/rooms/${state.roomId}/ws`);
   state.ws = ws;
-  ws.onopen = () => { $('#room-state').textContent = 'Connected'; $('#room-state').className = 'pill green'; };
+  ws.onopen = () => { $('#room-state').textContent = 'Room online'; $('#room-state').className = 'pill green'; };
   ws.onmessage = async (event) => {
     const message = JSON.parse(event.data);
     if (message.type === 'room.snapshot') {
@@ -174,7 +209,7 @@ async function createPeerInternal() {
     state.receivedTracks.add(event.track.kind); video.classList.remove('hidden');
     $('#game-placeholder').classList.add('hidden');
     video.play().then(maybeReportMediaReady).catch(() => {
-      $('#enable-media').classList.remove('hidden');
+      $('#sound-gate').classList.remove('hidden');
       toast('One click is needed to enable game sound.');
     });
   };
@@ -196,7 +231,10 @@ function bindChannel(channel) {
       if (msg.type === 'pong') recordPong(msg.seq);
       if (msg.type === 'device.ready' && state.role === 'host') { state.guestDeviceReady = Boolean(msg.ready); updateReady(); }
       if (msg.type === 'seat.ready' && state.role === 'host') { state.guestReady = Boolean(msg.ready); updateReady(); }
-      if (msg.type === 'prepare' && state.role === 'guest') { show('loading'); $('#loading-title').textContent = 'Your friend is starting the arcade'; }
+      if (msg.type === 'prepare' && state.role === 'guest') {
+        if (msg.gameTitle) { state.gameTitle = msg.gameTitle; updateGamePresentation(); }
+        show('loading'); $('#loading-title').textContent = `Your friend is starting ${state.gameTitle}`;
+      }
       if (msg.type === 'media.ready' && state.role === 'host') state.mediaReady = true;
       if (msg.type === 'start' && state.role === 'guest') beginGuestPlay();
     };
@@ -214,15 +252,18 @@ function bindChannel(channel) {
 }
 
 function startControllerProbe() {
+  if (startControllerProbe.started) return;
+  startControllerProbe.started = true;
   let hadPad = false;
   const poll = () => {
-    if (!state.roomId) return;
+    if (!state.roomId && $('#setup').classList.contains('hidden')) return;
     const pad = navigator.getGamepads?.()[0];
     if (pad && !state.controllerReady) {
-      state.controllerReady = true; hadPad = true; setCheck('#check-controller', true, pad.id.slice(0, 18)); sendDeviceReady(); updateReady();
+      state.controllerReady = true; hadPad = true; setCheck('#check-controller', true, pad.mapping === 'standard' ? 'Controller ready' : 'Check mapping');
+      $('#gamepad-test-state').textContent = pad.mapping === 'standard' ? 'Detected' : 'Nonstandard'; sendDeviceReady(); updateReady();
     }
     if (state.role === 'guest' && state.input?.readyState === 'open' && pad) sendGamepad(pad);
-    if (!pad && hadPad) { hadPad = false; sendNeutralInput(); state.controllerReady = false; state.guestReady = false; setCheck('#check-controller', false, 'Disconnected'); sendDeviceReady(); sendSeatReady(false); updateReady(); }
+    if (!pad && hadPad) { hadPad = false; sendNeutralInput(); state.controllerReady = false; state.guestReady = false; setCheck('#check-controller', false, 'Disconnected'); $('#gamepad-test-state').textContent = 'Disconnected'; sendDeviceReady(); sendSeatReady(false); updateReady(); }
     requestAnimationFrame(poll);
   };
   requestAnimationFrame(poll);
@@ -265,10 +306,15 @@ function sendSeatReady(ready) {
 
 for (const type of ['keydown', 'keyup']) window.addEventListener(type, (event) => {
   const index = KEY_TO_LIBRETRO[event.code];
-  if (index === undefined || state.role !== 'guest') return;
-  event.preventDefault(); keyboardState[index] = type === 'keydown' ? 1 : 0;
-  if (!state.controllerReady) { state.controllerReady = true; setCheck('#check-controller', true, 'Keyboard'); sendDeviceReady(); updateReady(); }
-  sendInputValues(keyboardState, true);
+  if (index === undefined) return;
+  if (state.role === 'guest') {
+    event.preventDefault(); keyboardState[index] = type === 'keydown' ? 1 : 0;
+    if (!state.controllerReady) { state.controllerReady = true; setCheck('#check-controller', true, 'Keyboard ready'); sendDeviceReady(); updateReady(); }
+    sendInputValues(keyboardState, true);
+  } else if (type === 'keydown' && (state.role === 'host' || !$('#setup').classList.contains('hidden'))) {
+    state.controllerReady = true; setCheck('#check-controller', true, 'Keyboard ready'); updateReady();
+  }
+  if (type === 'keydown' && $('#controls-dialog').open) $('#keyboard-test-state').textContent = event.code.replace(/^Key/, '');
 });
 window.addEventListener('blur', sendNeutralInput);
 document.addEventListener('visibilitychange', () => { if (document.hidden) sendNeutralInput(); });
@@ -296,50 +342,97 @@ function applyRemoteInput(message) {
 function updateReady() {
   const button = $('#play-button');
   if (state.role === 'guest') {
-    button.textContent = state.guestReady ? 'Ready — waiting for host' : state.peerConnected ? "I'm ready" : 'Connecting to host';
-    button.disabled = !state.peerConnected || !state.controllerReady || state.guestReady;
-    setCheck('#check-game', state.peerConnected, state.peerConnected ? 'Stream ready' : 'Host provides');
+    button.textContent = state.guestReady ? 'Ready · click to unready' : state.peerConnected ? "I'm ready" : 'Connecting to host';
+    button.disabled = !state.peerConnected || !state.controllerReady;
+    setCheck('#check-game', true, 'Host provides game');
   } else {
     const ready = state.controllerReady && state.gameReady && state.peerConnected && state.guestDeviceReady && state.guestReady;
     button.disabled = !ready;
-    button.textContent = ready ? `Start ${state.gameTitle} →` : !state.gameReady ? 'Choose both game files' : !state.peerConnected ? 'Waiting for your friend' : !state.guestDeviceReady ? 'Player two needs a controller or keyboard' : !state.guestReady ? 'Waiting for player two to ready up' : 'Connect a controller';
+    button.textContent = ready ? 'Start the run →' : !state.gameReady ? 'Choose a game source' : !state.controllerReady ? 'Test Player 1 controls' : !state.peerConnected ? 'Waiting for your friend' : !state.guestDeviceReady ? 'Player 2 needs controls' : !state.guestReady ? 'Waiting for Player 2 readiness' : 'Start the run →';
   }
 }
 
 async function handleFiles(files) {
+  const selection = ++state.sourceSelection;
   const entries = [...files]; const rom = entries.find((f) => f.name.toLowerCase() === 'mslug2.zip'); const bios = entries.find((f) => f.name.toLowerCase() === 'neogeo.zip');
-  if (!rom || !bios) { toast('Choose both mslug2.zip and neogeo.zip'); return; }
+  if (!rom || !bios) {
+    const missing = [!rom && 'mslug2.zip', !bios && 'neogeo.zip'].filter(Boolean).join(' and ');
+    state.gameReady = false; $('#setup-error').textContent = `Missing ${missing}. Select both original ZIP archives together.`;
+    updateSourceStatus(`Missing ${missing}.`, false); setCheck('#check-game', false, 'Files missing'); updateReady(); return;
+  }
+  if (selection !== state.sourceSelection) return;
   state.romFile = rom; state.biosFile = bios; state.gameTitle = 'Metal Slug 2'; state.gameReady = true;
-  setCheck('#check-game', true, 'Files selected'); $('#file-picker p').textContent = 'Files selected. Compatibility is checked when the arcade starts.'; updateReady();
+  $('#setup-error').textContent = ''; setCheck('#check-game', true, 'Files selected');
+  updateSourceStatus('Metal Slug 2 files selected. Compatibility is checked at launch.', true); updateGamePresentation(); updateReady();
 }
 
 async function loadDemo() {
-  const response = await fetch('/demo/cps1frog.zip');
-  if (!response.ok) throw new Error('The free test game could not be loaded.');
-  state.romFile = new File([await response.blob()], 'cps1frog.zip', { type: 'application/zip' });
-  state.biosFile = null; state.gameTitle = 'Frog Feast'; state.gameReady = true;
-  setCheck('#check-game', true, 'Frog Feast ready');
-  $('#file-picker p').textContent = 'Free two-player test game selected. No BIOS is required.';
-  updateReady();
+  const selection = ++state.sourceSelection;
+  updateSourceStatus('Loading the free test game…', false);
+  document.querySelectorAll('[data-action="load-demo"]').forEach((button) => { button.disabled = true; });
+  try {
+    const response = await fetch('/demo/cps1frog.zip');
+    if (!response.ok) throw new Error('The free test game could not be loaded.');
+    if (selection !== state.sourceSelection) return;
+    state.romFile = new File([await response.blob()], 'cps1frog.zip', { type: 'application/zip' });
+    state.biosFile = null; state.gameTitle = 'Frog Feast'; state.gameReady = true;
+    setCheck('#check-game', true, 'Frog Feast ready');
+    updateSourceStatus('Frog Feast is ready. No BIOS is required.', true); updateGamePresentation(); updateReady();
+  } finally {
+    document.querySelectorAll('[data-action="load-demo"]').forEach((button) => { button.disabled = false; });
+  }
+}
+
+function updateSourceStatus(message, ready) {
+  const status = $('#setup-source-status'); status.querySelector('p').textContent = message; status.classList.toggle('ready', ready);
+  $('#file-picker p').textContent = message;
+}
+
+function updateGamePresentation() {
+  document.querySelectorAll('[data-game-title]').forEach((node) => { node.textContent = state.gameReady ? state.gameTitle : 'No game selected'; });
+  syncSetupButton();
+}
+
+function syncSetupButton() {
+  const button = $('#create-room-button'); if (!button || state.creating) return;
+  button.disabled = (state.mode === 'friends' && !$('#host-name').value.trim()) || !state.gameReady;
+  button.textContent = state.mode === 'solo' ? 'Start solo →' : 'Create private room →';
 }
 
 async function startGame() {
   if (state.role === 'guest') {
     if (!state.peerConnected || !state.controllerReady) return;
-    state.guestReady = true; sendDeviceReady(); sendSeatReady(true); updateReady(); toast('Ready — your friend can start the run.'); return;
+    state.guestReady = !state.guestReady; sendDeviceReady(); sendSeatReady(state.guestReady); updateReady(); toast(state.guestReady ? 'Ready — your friend can start the run.' : 'You are no longer ready.'); return;
   }
   if (!state.gameReady || !state.peerConnected || !state.guestReady) return;
-  state.control?.send(JSON.stringify({ type: 'prepare' }));
+  state.control?.send(JSON.stringify({ type: 'prepare', gameTitle: state.gameTitle }));
   show('loading');
-  $('#stage-connect').classList.add('done'); $('#stage-connect').textContent = '✓ Encrypted connection established';
+  $('#loading-title').textContent = `Preparing ${state.gameTitle}`;
+  $('#stage-connect').classList.add('done'); $('#stage-connect').textContent = 'Encrypted connection established';
   await loadEmulator();
-  $('#stage-sync').classList.add('done'); $('#stage-sync').textContent = '✓ Game compatibility confirmed';
+  $('#stage-sync').classList.add('done'); $('#stage-sync').textContent = 'Game compatibility confirmed';
   show('game');
+  $('#game-peer-label').textContent = 'Player 1 + Player 2'; $('#quality-pill').classList.remove('hidden');
   state.mediaReady = false;
   await maybeAttachStream(true);
   await waitForMedia();
-  $('#stage-ready').classList.add('done'); $('#stage-ready').textContent = '✓ Ready';
+  $('#stage-ready').classList.add('done'); $('#stage-ready').textContent = 'Audio and video ready';
   state.control?.send(JSON.stringify({ type: 'start' }));
+}
+
+async function startSolo() {
+  if (!state.gameReady) return;
+  const input = $('#host-name'); if (input.value.trim()) saveName(input);
+  state.role = 'host'; state.roomId = 'solo'; state.mode = 'solo';
+  startControllerProbe(); updateGamePresentation(); show('loading');
+  $('#loading-title').textContent = `Preparing ${state.gameTitle}`;
+  $('#stage-connect').classList.add('done'); $('#stage-connect').textContent = 'Solo session · no network needed';
+  await loadEmulator();
+  $('#stage-sync').classList.add('done'); $('#stage-sync').textContent = 'Game compatibility confirmed';
+  $('#stage-ready').classList.add('done'); $('#stage-ready').textContent = 'Ready to play';
+  show('game'); $('#game-peer-label').textContent = 'Player 1 · Solo';
+  $('#quality-pill').textContent = 'Solo · Local'; $('#quality-pill').classList.add('hidden');
+  $('[data-action="show-diagnostics"]').classList.add('hidden');
 }
 
 function loadEmulator() {
@@ -386,7 +479,7 @@ function maybeReportMediaReady() {
   const video = $('#guest-video');
   if (state.role === 'guest' && !video.paused && state.receivedTracks.has('audio') && state.receivedTracks.has('video') && state.control?.readyState === 'open') {
     state.control.send(JSON.stringify({ type: 'media.ready' }));
-    $('#enable-media').classList.add('hidden');
+    $('#sound-gate').classList.add('hidden');
   }
 }
 
@@ -395,7 +488,11 @@ async function enableMedia() {
   maybeReportMediaReady();
 }
 
-function beginGuestPlay() { show('game'); $('#game-placeholder').classList.remove('hidden'); }
+function beginGuestPlay() {
+  show('game'); $('#game-peer-label').textContent = 'Player 1 + Player 2';
+  const playable = $('#guest-video').readyState >= 2 && state.receivedTracks.has('video');
+  $('#game-placeholder').classList.toggle('hidden', playable);
+}
 function connectionLost() {
   if (!state.peerConnected && state.reconnectAttempts) return;
   state.peerConnected = false; state.guestReady = false; state.guestDeviceReady = false; resetRemoteInputs(); updateReady();
@@ -419,7 +516,7 @@ function showConnectionOverlay(mode) {
   const failed = mode === 'failed';
   $('#connection-overlay').classList.remove('hidden');
   $('#connection-title').textContent = failed ? 'Connection could not be restored' : `Reconnecting${state.reconnectAttempts ? ` · attempt ${state.reconnectAttempts + 1} of 3` : '…'}`;
-  $('#connection-copy').textContent = failed ? 'Your game is still open on the host. Retry the connection or end this session.' : 'The game is paused while we bring your friend back.';
+  $('#connection-copy').textContent = failed ? 'The host game is still open. Retry the connection or end this session.' : 'Player two was released; the host game is still running while we restore the link.';
   $('#retry-connection').classList.toggle('hidden', !failed);
   $('#end-session').classList.toggle('hidden', !failed);
 }
@@ -480,35 +577,76 @@ async function resetGuestSeat() {
   toast('Player two removed. A fresh invite link is ready.');
 }
 
+function openControls() {
+  const dialog = $('#controls-dialog');
+  if (!dialog.open) dialog.showModal();
+}
+
+function toggleSheet(id, open) {
+  const node = $(id); node.classList.toggle('hidden', !open);
+  if (id === '#diagnostics') $('#quality-pill').setAttribute('aria-expanded', String(open));
+  if (id === '#game-menu-panel') $('[data-action="game-menu"]').setAttribute('aria-expanded', String(open));
+}
+
+function requestEndSession() {
+  const dialog = $('#confirm-dialog');
+  $('#confirm-title').textContent = state.mode === 'solo' ? 'End this solo run?' : 'End this session?';
+  $('#confirm-copy').textContent = state.mode === 'solo' ? 'The local game will close and return to the home screen.' : 'The private room and its current invite will stop working.';
+  $('#confirm-action').textContent = 'End session'; state.confirmAction = () => location.assign('/');
+  dialog.returnValue = ''; if (!dialog.open) dialog.showModal();
+}
+
+function requestGuestRemoval() {
+  const dialog = $('#confirm-dialog');
+  $('#confirm-title').textContent = 'Remove Player 2?';
+  $('#confirm-copy').textContent = 'Their current seat and invite will stop working. QuarterLink will create a fresh private link.';
+  $('#confirm-action').textContent = 'Remove and reinvite'; state.confirmAction = resetGuestSeat;
+  dialog.returnValue = ''; if (!dialog.open) dialog.showModal();
+}
+
+$('#confirm-dialog').addEventListener('close', (event) => {
+  if (event.target.returnValue === 'confirm') Promise.resolve(state.confirmAction?.()).catch((error) => toast(error.message));
+  state.confirmAction = null;
+});
+
 document.addEventListener('click', (event) => {
   const action = event.target.closest('[data-action]')?.dataset.action; if (!action) return;
-  if (action === 'open-host') show('setup');
+  if (['create-room', 'join-room'].includes(action)) event.preventDefault();
+  if (action === 'open-host') openSetup('friends');
+  if (action === 'open-solo') openSetup('solo');
   if (action === 'open-join') { $('#code-field').classList.remove('hidden'); show('join'); }
-  if (action === 'home' || action === 'leave') location.assign('/');
+  if (action === 'home') location.assign('/');
+  if (action === 'leave' || action === 'end-session') requestEndSession();
   if (action === 'create-room') createRoom();
   if (action === 'join-room') joinRoom();
   if (action === 'copy-invite') copyInvite();
-  if (action === 'reset-seat') resetGuestSeat().catch((error) => toast(error.message));
+  if (action === 'reset-seat') requestGuestRemoval();
   if (action === 'load-demo') loadDemo().catch((error) => toast(error.message));
   if (action === 'start-game') startGame().catch((error) => { toast(error.message); show('room'); });
   if (action === 'enable-media') enableMedia().catch(() => toast('Sound is still blocked. Check the browser site controls.'));
   if (action === 'retry-connection') retryConnection();
-  if (action === 'end-session') location.assign('/');
   if (action === 'fullscreen') $('#game').requestFullscreen?.();
-  if (action === 'game-menu') $('#diagnostics').classList.toggle('hidden');
+  if (action === 'game-menu') toggleSheet('#game-menu-panel', $('#game-menu-panel').classList.contains('hidden'));
+  if (action === 'close-game-menu') toggleSheet('#game-menu-panel', false);
+  if (action === 'show-diagnostics') { toggleSheet('#game-menu-panel', false); toggleSheet('#diagnostics', true); }
+  if (action === 'close-diagnostics') toggleSheet('#diagnostics', false);
+  if (action === 'open-controls') { toggleSheet('#game-menu-panel', false); openControls(); }
+  if (action === 'dismiss-toast') $('#toast').classList.remove('show');
 });
-$('#quality-pill').addEventListener('click', () => $('#diagnostics').classList.toggle('hidden'));
+$('#quality-pill').addEventListener('click', () => toggleSheet('#diagnostics', $('#diagnostics').classList.contains('hidden')));
 $('#game-files').addEventListener('change', (event) => handleFiles(event.target.files));
+$('#host-name').addEventListener('input', syncSetupButton);
 
 const remembered = localStorage.getItem('quarterlink.name') || '';
 $('#host-name').value = remembered; $('#guest-name').value = remembered;
 const supported = typeof RTCPeerConnection !== 'undefined' && typeof WebAssembly !== 'undefined' && 'captureStream' in HTMLCanvasElement.prototype;
 if (!supported) {
-  document.querySelectorAll('[data-action="open-host"], [data-action="open-join"]').forEach((button) => { button.disabled = true; });
+  document.querySelectorAll('[data-action="open-host"], [data-action="open-solo"], [data-action="open-join"]').forEach((button) => { button.disabled = true; });
   toast('QuarterLink requires a current Chrome or Edge browser.');
 }
 const invite = parseInvite();
-if (invite) { state.roomId = invite.roomId; $('#join-title').textContent = 'Your friend saved you a seat.'; show('join'); }
+updateGamePresentation();
+if (invite) { state.mode = 'friends'; state.roomId = invite.roomId; $('#join-title').textContent = 'Your friend saved you a seat.'; show('join'); }
 else if (location.pathname.startsWith('/room/')) {
   state.roomId = location.pathname.split('/')[2]; enterRoom().catch(() => { history.replaceState({}, '', '/'); show('landing'); toast('That room is no longer available.'); });
 }

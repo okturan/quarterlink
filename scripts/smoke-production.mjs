@@ -7,7 +7,7 @@ for (const route of ['/', '/join/smoke', '/room/smoke']) {
   const response = await fetch(`${base}${route}?smoke=${Date.now()}`, { headers: { accept: 'text/html,application/xhtml+xml' }, redirect: 'manual' });
   assert.equal(response.status, 200, `${route} returned ${response.status} ${response.headers.get('location') || ''}`);
   assert.equal(response.headers.get('location'), null, `${route} redirected`);
-  assert.match(await response.text(), /<script src="\/quarterlink\.js" type="module"><\/script>/);
+  assert.match(await response.text(), /<script src="\/quarterlink-v3\.js" type="module"><\/script>/);
 }
 
 const create = await fetch(`${base}/api/rooms`, {

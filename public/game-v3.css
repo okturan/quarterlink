@@ -1,0 +1,36 @@
+.playing .site-header { display: none; }
+.game-view { position: fixed; inset: 0; z-index: 50; width: 100%; max-width: none; height: 100dvh; padding: 0; display: flex; flex-direction: column; background: #000; }
+.game-topbar { position: relative; z-index: 20; flex: none; min-height: 64px; display: flex; align-items: center; gap: 16px; padding: 8px 18px; border-bottom: 1px solid #292d33; background: rgba(10,11,13,.96); }
+.brand.mini .coin { width: 34px; height: 34px; }
+.brand.mini { padding: 0; border: 0; background: transparent; cursor: pointer; }
+#game-peer-label { color: var(--ink-soft); font-size: 13px; font-weight: 800; }
+.quality-pill { position: absolute; left: 50%; transform: translateX(-50%); min-height: 38px; padding: 8px 13px; border: 1px solid #31574f; border-radius: 999px; background: #10241f; color: var(--mint); font-size: 12px; font-weight: 800; cursor: pointer; }
+.quality-pill:hover { border-color: var(--mint); }
+.game-tools { margin-left: auto; display: flex; gap: 8px; }
+.game-tools button { width: 44px; height: 44px; border: 1px solid #343840; border-radius: 10px; background: #15181c; color: var(--ink); cursor: pointer; font-size: 17px; }
+.emulator-frame { position: relative; flex: 1; min-height: 0; display: grid; place-items: center; overflow: hidden; background: #000; }
+#emulator-player { width: 100%; height: 100%; }
+.emulator-frame canvas, .emulator-frame video { width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; image-rendering: auto; background: #000; }
+.emulator-frame video:empty { display: none; }
+#game-placeholder { position: absolute; inset: 0; z-index: 3; display: grid; place-content: center; gap: 18px; text-align: center; background: #070809; }
+.connection-overlay { position: absolute; inset: 64px 0 0; z-index: 40; display: grid; place-items: center; padding: 20px; background: rgba(3,4,5,.8); backdrop-filter: blur(6px); }
+.modal-card { width: min(100%, 430px); padding: 34px; border: 1px solid #444950; border-radius: 18px; background: #111317; text-align: center; box-shadow: 0 24px 80px #000; }
+.signal-icon { width: 56px; height: 56px; margin: 0 auto 16px; display: grid; place-items: center; border: 1px solid #753149; border-radius: 50%; background: var(--berry-dim); color: var(--berry); font-size: 28px; }
+.modal-card h2 { margin: 0; font-size: 34px; }.modal-card p { color: var(--muted); line-height: 1.55; }
+.sheet { position: absolute; z-index: 45; top: 76px; right: 16px; width: min(calc(100% - 32px), 360px); padding: 20px; border: 1px solid var(--border); border-radius: 16px; background: rgba(18,20,24,.98); box-shadow: 0 24px 70px #000; }
+.sheet h2 { margin: 0; font-size: 26px; }.sheet .sheet-handle { display: none; }.sheet-header { margin-bottom: 14px; }
+.diagnostics dl { margin: 0; }.diagnostics dl div { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border-top: 1px solid var(--border-soft); font-size: 13px; }.diagnostics dt { color: var(--muted); }.diagnostics dd { margin: 0; text-align: right; font-weight: 800; }.diagnostics > p { margin: 14px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.game-menu-panel { display: grid; gap: 7px; }
+.menu-row { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 11px 12px; border: 1px solid var(--border-soft); border-radius: 10px; background: #0d0f12; text-align: left; }.menu-row b { color: var(--muted); }
+
+@media (max-width: 680px) {
+  .game-topbar { min-height: 58px; padding: 7px 10px; gap: 10px; }
+  .brand.mini { display: none; }
+  #game-peer-label { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .quality-pill { position: static; margin-left: auto; transform: none; min-width: 0; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .game-tools { margin-left: 0; }.game-tools button { width: 44px; }
+  .connection-overlay { inset: 58px 0 0; }
+  .sheet { top: auto; right: 0; bottom: 0; left: 0; width: 100%; padding: 20px 18px max(22px, env(safe-area-inset-bottom)); border-radius: 22px 22px 0 0; }
+  .sheet .sheet-handle { display: block; }
+  .modal-card { padding: 28px 20px; }
+}

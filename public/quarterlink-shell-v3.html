@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#090a0c">
+  <meta name="description" content="Play a local arcade game solo or invite a friend with one private link.">
+  <meta property="og:title" content="QuarterLink — Your couch has a second seat">
+  <meta property="og:description" content="A private browser arcade for one or two players. No install and no account for your friend.">
+  <meta property="og:type" content="website">
+  <title>QuarterLink — Your couch has a second seat</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/styles-v3.css">
+  <link rel="stylesheet" href="/game-v3.css">
+</head>
+<body>
+  <div class="ambient" aria-hidden="true"><span></span><span></span><span></span></div>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="QuarterLink home"><span class="coin" aria-hidden="true">Q</span><span>QuarterLink</span></a>
+    <p class="header-promise"><span aria-hidden="true">●</span> Private rooms · WebRTC encrypted</p>
+  </header>
+
+  <main id="app">
+    <section id="landing" class="view landing" aria-labelledby="landing-title">
+      <div class="hero-copy">
+        <p class="kicker">A PRIVATE BROWSER ARCADE</p>
+        <h1 id="landing-title" tabindex="-1">Your couch has<br><em>a second seat.</em></h1>
+        <p class="lede">Play a local arcade game solo or with a friend online. You run the game in Chrome or Edge; your friend joins from one private link.</p>
+        <div class="hero-actions">
+          <button class="button primary large" data-action="open-host"><span class="button-icon" aria-hidden="true">↗</span> Play with a friend</button>
+          <button class="button secondary large" data-action="open-solo"><span class="button-icon" aria-hidden="true">▶</span> Play solo</button>
+          <button class="text-button" data-action="open-join">I have an invite link <span aria-hidden="true">→</span></button>
+        </div>
+        <ul class="hero-facts" aria-label="Requirements">
+          <li>No account</li><li>No install</li><li>Files stay local</li>
+        </ul>
+      </div>
+
+      <div class="lounge-card" aria-label="QuarterLink private arcade preview">
+        <div class="lounge-art" aria-hidden="true">
+          <div class="lamp"><i></i></div><div class="couch"><i></i><i></i></div><div class="table"><i></i></div><div class="cabinet"><b>Q</b></div>
+        </div>
+        <div class="lounge-overlay">
+          <div class="seat-preview"><span class="player-token p1">P1</span><div><strong>Your game</strong><small>Runs here in the browser</small></div></div>
+          <div class="link-preview"><span></span><b>Encrypted WebRTC link</b><span></span></div>
+          <div class="seat-preview"><span class="player-token p2">P2</span><div><strong>Your friend</strong><small>One private link away</small></div></div>
+        </div>
+        <div class="now-playing"><span class="game-cover" aria-hidden="true">Q</span><div><small>TONIGHT'S RUN</small><strong data-game-title>Metal Slug 2</strong></div><b>1–2P</b></div>
+      </div>
+    </section>
+
+    <section id="setup" class="view flow-view hidden" aria-labelledby="setup-title">
+      <div class="flow-chrome"><button class="icon-button" data-action="home" aria-label="Back to home">←</button><span id="setup-mode-label">OPEN A PRIVATE ROOM</span><span class="player-token p1">P1</span></div>
+      <form class="flow-card" id="setup-form">
+        <div class="flow-heading"><span class="heading-icon" aria-hidden="true">⌂</span><div><p class="kicker">FIRST SEAT</p><h1 id="setup-title" tabindex="-1">Set up your run.</h1><p id="setup-copy">Choose a game source, then open a private room.</p></div></div>
+
+        <div id="display-name-step" class="numbered-step">
+          <span class="step-number">1</span>
+          <label class="field"><span>Display name</span><small>This is how your friend will see you.</small><input id="host-name" maxlength="24" autocomplete="nickname" placeholder="Player 1" required></label>
+        </div>
+
+        <fieldset class="numbered-step source-step">
+          <legend><span class="step-number">2</span><span><b>Game source</b><small>Files stay on this device. Gameplay video is streamed only in friend mode.</small></span></legend>
+          <div class="source-actions">
+            <label class="source-choice" for="game-files"><span class="source-icon" aria-hidden="true">▣</span><span><strong>Choose game files</strong><small><code>mslug2.zip</code> + <code>neogeo.zip</code></small></span><b>Browse</b></label>
+            <button type="button" class="source-choice" data-action="load-demo"><span class="source-icon mint" aria-hidden="true">◆</span><span><strong>Use free test game</strong><small>Frog Feast · two-player homebrew</small></span><b>Load</b></button>
+          </div>
+          <div id="setup-source-status" class="source-status" aria-live="polite"><span></span><p>No game selected yet.</p></div>
+        </fieldset>
+
+        <div class="privacy-strip"><span aria-hidden="true">◇</span><p><strong>Private by design.</strong> ROM and BIOS files never upload to QuarterLink.</p></div>
+        <button id="create-room-button" class="button primary full large" type="submit" data-action="create-room" disabled>Create private room <span aria-hidden="true">→</span></button>
+        <p id="setup-error" class="form-error" role="alert"></p>
+      </form>
+    </section>
+
+    <section id="join" class="view flow-view hidden" aria-labelledby="join-title">
+      <div class="flow-chrome"><button class="icon-button" data-action="home" aria-label="Back to home">←</button><span>JOIN A PRIVATE ROOM</span><span class="player-token p2">P2</span></div>
+      <form class="flow-card join-card" id="join-form">
+        <div class="flow-heading centered"><span class="heading-icon berry" aria-hidden="true">↗</span><div><p class="kicker berry-text">YOUR SEAT IS WAITING</p><h1 id="join-title" tabindex="-1">Join your friend.</h1><p>Private room · Encrypted connection · No account</p></div></div>
+        <label class="field"><span>Display name</span><small>Your friend will see this in the lobby.</small><input id="guest-name" maxlength="24" autocomplete="nickname" placeholder="Player 2" required></label>
+        <label id="code-field" class="field hidden"><span>Private invite link</span><small>Paste the complete link, including everything after #.</small><input id="room-code" autocomplete="off" inputmode="url" placeholder="https://quarterlink…/join/…#…"></label>
+        <button id="join-room-button" class="button berry full large" type="submit" data-action="join-room">Join room <span aria-hidden="true">→</span></button>
+        <div id="join-error-card" class="error-card hidden" role="alert"><span aria-hidden="true">!</span><div><strong>Invite unavailable</strong><p id="join-error"></p></div></div>
+        <p class="mobile-note">For gameplay, use desktop Chrome or Edge with a keyboard or controller.</p>
+      </form>
+    </section>
+
+    <section id="room" class="view room-view hidden" aria-labelledby="room-title">
+      <div class="session-bar"><div><span class="session-label">PRIVATE ROOM</span><strong id="room-code-display">••••-•••</strong></div><span id="room-state" class="pill amber">Room starting</span><button class="text-button danger" data-action="leave">End session</button></div>
+      <div class="room-heading"><div><p class="kicker">CHECK YOUR SEAT</p><h1 id="room-title" tabindex="-1">Ready when you are.</h1><p id="seat-count">1 of 2 seats filled</p></div><div id="invite-box" class="invite-inline"><span><small>PRIVATE INVITE LINK</small><strong>Single use · expires in 2 hours</strong></span><button class="button primary" data-action="copy-invite">Copy invite link</button></div></div>
+
+      <div class="player-grid">
+        <article class="player-card occupied" id="host-seat"><div class="player-card-head"><span class="player-token p1">P1</span><div><strong id="host-display">Host</strong><small>You · Host</small></div><span class="seat-status">Here</span></div><button class="control-tester" data-action="open-controls"><span aria-hidden="true">⌨</span><span><strong>Test controls</strong><small>Keyboard or controller</small></span><b>Open</b></button></article>
+        <article class="player-card empty" id="guest-seat"><div class="player-card-head"><span class="player-token p2">P2</span><div><strong>Waiting for your friend</strong><small>Send the private invite link</small></div><span class="seat-status">Empty</span></div><button id="reset-seat" class="button secondary small hidden" data-action="reset-seat">Remove and reinvite</button></article>
+      </div>
+
+      <div class="room-grid">
+        <section class="panel source-panel" id="file-picker"><div class="panel-heading"><span class="game-cover" aria-hidden="true">Q</span><div><small>GAME SOURCE</small><strong data-game-title>No game selected</strong><p>Choose <code>mslug2.zip</code> with <code>neogeo.zip</code>, or use the free test game.</p></div></div><div class="source-actions compact"><label class="button secondary" for="game-files">Choose files</label><button class="button secondary" data-action="load-demo">Use free test game</button></div></section>
+        <section class="panel readiness-panel"><div class="panel-heading simple"><div><small>START CHECK</small><strong>Everything needed to play</strong></div></div><div class="checks"><div id="check-game"><i></i><span><strong>Game source</strong><small>Local files or free test game</small></span><b>Needed</b></div><div id="check-controller"><i></i><span><strong>Player 1 controls</strong><small>Press a keyboard key or controller button</small></span><b>Checking</b></div><div id="check-network"><i></i><span><strong>Player 2 connection</strong><small>Encrypted WebRTC · direct or relay</small></span><b>Waiting</b></div></div><button id="play-button" class="button primary full large" data-action="start-game" disabled>Waiting for both players</button><p id="room-help" class="room-help" aria-live="polite">Copy the private invite link to bring in Player 2.</p></section>
+      </div>
+    </section>
+
+    <section id="loading" class="view flow-view hidden" aria-labelledby="loading-title">
+      <div class="loading-card"><div class="orbit" aria-hidden="true"><span class="coin">Q</span></div><p class="kicker">OPENING THE ARCADE</p><h1 id="loading-title" tabindex="-1">Preparing <span data-game-title>your game</span></h1><p id="loading-note">This should only take a moment.</p><ol class="load-stages"><li class="done">Files selected</li><li id="stage-connect">Selecting connection</li><li id="stage-sync">Starting game</li><li id="stage-ready">Audio and video ready</li></ol><div id="sound-gate" class="sound-gate hidden"><span aria-hidden="true">◖</span><div><strong>Enable sound</strong><small>One click lets the browser play your friend's game audio.</small></div><button id="enable-media" class="button primary" data-action="enable-media">Enable sound</button></div></div>
+    </section>
+
+    <section id="game" class="view game-view hidden" aria-labelledby="game-peer-label">
+      <div class="game-topbar"><button class="brand mini" data-action="end-session" aria-label="End session and return home"><span class="coin">Q</span></button><div id="game-peer-label" tabindex="-1">Player 1 + Player 2</div><button id="quality-pill" class="quality-pill" aria-expanded="false" aria-controls="diagnostics">Measuring connection…</button><div class="game-tools"><button data-action="fullscreen" aria-label="Enter fullscreen">⛶</button><button data-action="game-menu" aria-label="Open game menu" aria-expanded="false">•••</button></div></div>
+      <div id="emulator-host" class="emulator-frame"><div id="emulator-player"></div><video id="guest-video" autoplay playsinline></video><div id="game-placeholder"><div class="orbit small" aria-hidden="true"><span class="coin">Q</span></div><strong>Starting the arcade…</strong></div></div>
+      <div id="connection-overlay" class="connection-overlay hidden" role="alertdialog" aria-modal="true" aria-labelledby="connection-title"><div class="modal-card"><span class="signal-icon" aria-hidden="true">⌁</span><h2 id="connection-title">Reconnecting…</h2><p id="connection-copy">Player two was released; the host game is still running.</p><div class="modal-actions"><button id="retry-connection" class="button berry hidden" data-action="retry-connection">Try again</button><button id="end-session" class="button secondary hidden" data-action="end-session">End session</button></div></div></div>
+      <div id="diagnostics" class="sheet diagnostics hidden" role="dialog" aria-modal="true" aria-labelledby="diagnostics-title"><div class="sheet-handle" aria-hidden="true"></div><div class="sheet-header"><div><small>LIVE SESSION</small><h2 id="diagnostics-title">Connection details</h2></div><button class="icon-button" data-action="close-diagnostics" aria-label="Close connection details">×</button></div><dl><div><dt>Connection type</dt><dd id="diag-transport">Detecting…</dd></div><div><dt>Network round trip</dt><dd id="diag-rtt">—</dd></div><div><dt>Jitter</dt><dd id="diag-jitter">—</dd></div><div><dt>Inputs sent</dt><dd id="diag-packets">0</dd></div></dl><p>Round-trip time is a network measurement, not total controller-to-screen latency.</p></div>
+      <div id="game-menu-panel" class="sheet game-menu-panel hidden" role="dialog" aria-modal="true" aria-labelledby="game-menu-title"><div class="sheet-handle" aria-hidden="true"></div><div class="sheet-header"><h2 id="game-menu-title">Game menu</h2><button class="icon-button" data-action="close-game-menu" aria-label="Close game menu">×</button></div><button class="menu-row" data-action="fullscreen"><span>Fullscreen</span><b>⛶</b></button><button class="menu-row" data-action="show-diagnostics"><span>Connection details</span><b>→</b></button><button class="menu-row" data-action="open-controls"><span>Controller help</span><b>→</b></button><button class="menu-row danger" data-action="end-session"><span>End session</span><b>→</b></button></div>
+    </section>
+  </main>
+
+  <dialog id="controls-dialog" class="controls-dialog"><form method="dialog"><div class="sheet-handle" aria-hidden="true"></div><div class="sheet-header"><div><small>PLAYER INPUT</small><h2>Test controls</h2></div><button class="icon-button" value="close" aria-label="Close controller test">×</button></div><p>Press a key or controller button. QuarterLink will release inputs automatically if the tab loses focus.</p><div class="device-row"><span aria-hidden="true">⌨</span><div><strong>Keyboard</strong><small>Arrows · Z/X/A/S · Enter · Right Shift</small></div><b id="keyboard-test-state">Press any key</b></div><div class="device-row"><span aria-hidden="true">◇</span><div><strong>Controller</strong><small>Standard-mapped gamepad recommended</small></div><b id="gamepad-test-state">Press any button</b></div><div class="control-map" aria-label="Keyboard controls"><span>↑<small>UP</small></span><span>←<small>LEFT</small></span><span>↓<small>DOWN</small></span><span>→<small>RIGHT</small></span><span>Z<small>B</small></span><span>X<small>A</small></span><span>↵<small>START</small></span></div><p class="mobile-note">For the best experience, use Chrome or Edge on desktop with a keyboard or controller.</p></form></dialog>
+
+  <dialog id="confirm-dialog" class="confirm-dialog"><form method="dialog"><span class="heading-icon berry" aria-hidden="true">!</span><h2 id="confirm-title">End this session?</h2><p id="confirm-copy">The room and its current invite will stop working.</p><div class="modal-actions"><button class="button secondary" value="cancel">Keep playing</button><button id="confirm-action" class="button berry" value="confirm">End session</button></div></form></dialog>
+
+  <input id="game-files" class="visually-hidden" type="file" accept=".zip" multiple>
+  <div id="toast" class="toast" role="status" aria-live="polite"><span aria-hidden="true">✓</span><strong></strong><button data-action="dismiss-toast" aria-label="Dismiss notification">×</button></div>
+  <script src="/quarterlink-v3.js" type="module"></script>
+</body>
+</html>

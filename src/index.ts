@@ -323,7 +323,7 @@ export default {
 			let response: Response;
 			if (url.pathname.startsWith("/api/")) response = await api(request, env, url);
 			else if (request.method === "GET" && request.headers.get("accept")?.includes("text/html")) {
-				const shellUrl = new URL("/quarterlink-shell-v2.html", url.origin);
+				const shellUrl = new URL("/quarterlink-shell-v3.html", url.origin);
 				response = await env.ASSETS.fetch(new Request(shellUrl, request));
 			} else response = await env.ASSETS.fetch(request);
 			return response.status === 101 ? response : securityHeaders(response);

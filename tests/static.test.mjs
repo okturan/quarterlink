@@ -3,8 +3,8 @@ import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import test from 'node:test';
 
-const html = await readFile(new URL('../public/quarterlink-shell-v2.html', import.meta.url), 'utf8');
-const client = await readFile(new URL('../public/quarterlink.js', import.meta.url), 'utf8');
+const html = await readFile(new URL('../public/quarterlink-shell-v3.html', import.meta.url), 'utf8');
+const client = await readFile(new URL('../public/quarterlink-v3.js', import.meta.url), 'utf8');
 const worker = await readFile(new URL('../src/index.ts', import.meta.url), 'utf8');
 const wrangler = await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
 
@@ -39,7 +39,7 @@ test('room snapshots explicitly strip sensitive tokens', () => {
   assert.match(worker, /crypto\.getRandomValues/);
 });
 
-test('client uses direct WebRTC channels and local object URLs', () => {
+test('client uses direct WebRTC channels and original File objects', () => {
   assert.match(client, /new RTCPeerConnection/);
   assert.match(client, /maxRetransmits: 0/);
   assert.match(client, /EJS_gameUrl = state\.romFile/);
@@ -67,14 +67,34 @@ test('room recovery, relay credentials, and websocket origin checks are wired', 
 });
 
 test('join UI asks for the complete private link, not a fake join code', () => {
-  assert.match(html, /Use an invite link/);
-  assert.match(html, /Paste the complete invite link/);
+  assert.match(html, /invite link/i);
+  assert.match(html, /Paste the complete link/);
   assert.doesNotMatch(html, /Join with code|Invite link or room code/);
   assert.doesNotMatch(html, /18 ms|Ready in Tirana|Direct encrypted connection/);
-  assert.match(html, /Encrypted peer link/);
+  assert.match(html, /Encrypted WebRTC link/);
+});
+
+test('redesigned shell preserves every client-bound DOM id and nested contract', () => {
+  const ids = [...client.matchAll(/\$\(['"]#([A-Za-z0-9_-]+)/g)].map((match) => match[1]);
+  for (const id of new Set(ids)) assert.match(html, new RegExp(`id=["']${id}["']`), `missing #${id}`);
+  for (const id of ['check-controller', 'check-game', 'check-network']) {
+    assert.match(html, new RegExp(`id="${id}"[^>]*>[\\s\\S]*?<b>`), `${id} must contain a b status`);
+  }
+  assert.match(html, /id="guest-seat"[\s\S]*?<strong>[\s\S]*?<small>[\s\S]*?class="seat-status"/);
+  assert.match(html, /id="file-picker"[\s\S]*?<p>/);
+});
+
+test('solo is a first-class local flow with no room requirement', () => {
+  assert.match(html, /data-action="open-solo"/);
+  assert.match(client, /async function startSolo/);
+  assert.match(client, /state\.roomId = 'solo'/);
+  assert.match(client, /Solo · Local/);
+  const soloBody = client.match(/async function startSolo\(\) \{([\s\S]*?)\n\}/)?.[1] || '';
+  assert.match(soloBody, /await loadEmulator\(\)/);
+  assert.doesNotMatch(soloBody, /api\(|createPeer\(|connectSignaling\(|maybeAttachStream\(|signal\(/);
 });
 
 test('versioned application shell cannot enter Cloudflare HTML redirect normalization', () => {
-  assert.match(worker, /quarterlink-shell-v2\.html/);
+  assert.match(worker, /quarterlink-shell-v3\.html/);
   assert.match(wrangler, /"html_handling": "none"/);
 });

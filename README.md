@@ -1,9 +1,10 @@
 # QuarterLink
 
-**Arcade night, without the distance.** QuarterLink is a zero-install, private two-player browser arcade. A host opens a room, shares a single-use link, loads local arcade files, and plays with a friend over a direct WebRTC connection.
+**Your couch has a second seat.** QuarterLink is a zero-install browser arcade for solo play or a private two-player session. A host can play locally, or open a room, share a single-use link, load local arcade files, and play with a friend over encrypted WebRTC.
 
 ## Current playable path
 
+- Solo mode runs the selected game entirely in the local browser without creating a room or network connection.
 - Metal Slug 2 runs in the host browser using a pinned FBNeo WebAssembly core.
 - The guest joins without an account or installation.
 - Guest controller input travels directly to the host over an unordered WebRTC data channel.
@@ -14,6 +15,8 @@
 The host supplies `mslug2.zip` and `neogeo.zip` in the room. Files remain local and are never uploaded. QuarterLink does not contain or distribute game ROMs.
 
 For hardware and connection testing without proprietary files, the room also offers Frog Feast, a freely distributable two-player CPS-1 homebrew game. Its source, transformation, hashes, and permission notice are recorded in [`public/demo/NOTICE.md`](public/demo/NOTICE.md).
+
+The July 2026 product redesign began from GPT-generated desktop and mobile direction boards. The saved references and design rationale are in [`docs/design`](docs/design).
 
 ## Run locally
 

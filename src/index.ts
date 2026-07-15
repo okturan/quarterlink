@@ -216,6 +216,8 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
 
 	const wsMatch = url.pathname.match(/^\/api\/rooms\/([A-Za-z0-9_-]+)\/ws$/);
 	if (wsMatch) {
+		const origin = request.headers.get("origin");
+		if (origin !== url.origin) return new Response("Forbidden origin", { status: 403 });
 		const session = cookieValue(request);
 		if (!session) return new Response("Unauthorized", { status: 401 });
 		const headers = new Headers(request.headers);

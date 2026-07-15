@@ -235,7 +235,10 @@ function loadEmulator() {
 async function maybeAttachStream(renegotiate = false) {
   if (state.role !== 'host' || !state.pc || !state.emulatorLoaded || state.streamStarted) return;
   const canvas = $('#emulator-player canvas'); if (!canvas?.captureStream) return;
-  const stream = canvas.captureStream(60); stream.getTracks().forEach((track) => state.pc.addTrack(track, stream)); state.streamStarted = true;
+  // EmulatorJS bridges its OpenAL/WebAudio graph into this capture stream,
+  // giving the guest synchronized game audio without a screen-share prompt.
+  const stream = window.EJS_emulator?.collectScreenRecordingMediaTracks?.(canvas, 60) || canvas.captureStream(60);
+  stream.getTracks().forEach((track) => state.pc.addTrack(track, stream)); state.streamStarted = true;
   if (renegotiate) { await state.pc.setLocalDescription(await state.pc.createOffer()); signal({ type: 'rtc.offer', description: state.pc.localDescription }); }
 }
 

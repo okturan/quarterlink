@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile, stat } from 'node:fs/promises';
 import test from 'node:test';
 
-const html = await readFile(new URL('../public/quarterlink-26df085.html', import.meta.url), 'utf8');
+const html = await readFile(new URL('../public/quarterlink-shell-v2.html', import.meta.url), 'utf8');
 const client = await readFile(new URL('../public/quarterlink.js', import.meta.url), 'utf8');
 const worker = await readFile(new URL('../src/index.ts', import.meta.url), 'utf8');
 const wrangler = await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
@@ -33,18 +33,23 @@ test('room snapshots explicitly strip sensitive tokens', () => {
 test('client uses direct WebRTC channels and local object URLs', () => {
   assert.match(client, /new RTCPeerConnection/);
   assert.match(client, /maxRetransmits: 0/);
-  assert.match(client, /URL\.createObjectURL\(rom\)/);
+  assert.match(client, /EJS_gameUrl = state\.romFile/);
+  assert.match(client, /EJS_biosUrl = state\.biosFile/);
   assert.match(client, /canvas\.captureStream\(60\)/);
   assert.match(client, /collectScreenRecordingMediaTracks/);
   assert.match(client, /GAMEPAD_TO_LIBRETRO = \[8, 0, 9, 1, 10, 11, 12, 13, 2, 3, 14, 15, 4, 5, 6, 7\]/);
   assert.match(client, /receivedTracks\.has\('audio'\).*receivedTracks\.has\('video'\)/);
   assert.match(client, /type: 'seat\.ready'/);
+  assert.match(client, /function maybeReportMediaReady/);
+  assert.match(client, /state\.peerCreating/);
 });
 
 test('room recovery, relay credentials, and websocket origin checks are wired', () => {
   assert.match(client, /quarterlink\.invite\./);
   assert.match(worker, /\/credentials\/generate-ice-servers/);
   assert.match(worker, /origin !== url\.origin/);
+  assert.match(worker, /sendToOtherRole/);
+  assert.match(worker, /Superseded by a newer connection/);
   assert.match(worker, /cache-control.*no-store/);
 });
 
@@ -55,6 +60,6 @@ test('join UI asks for the complete private link, not a fake join code', () => {
 });
 
 test('versioned application shell cannot enter Cloudflare HTML redirect normalization', () => {
-  assert.match(worker, /quarterlink-26df085\.html/);
+  assert.match(worker, /quarterlink-shell-v2\.html/);
   assert.match(wrangler, /"html_handling": "none"/);
 });

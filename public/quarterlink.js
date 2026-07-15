@@ -3,9 +3,9 @@ const views = [...document.querySelectorAll('.view')];
 const state = {
   roomId: null, role: null, inviteSecret: null, ws: null, pc: null,
   control: null, input: null, peerConnected: false, controllerReady: false,
-  gameReady: false, guestReady: false, guestDeviceReady: false, romUrl: null, biosUrl: null, pingSeq: 0, pings: new Map(),
+  gameReady: false, guestReady: false, guestDeviceReady: false, romFile: null, biosFile: null, pingSeq: 0, pings: new Map(),
   rtts: [], jitter: 0, packetCount: 0, emulatorLoaded: false, streamStarted: false,
-  pendingIce: [], relayAvailable: false, mediaReady: false, receivedTracks: new Set(), reconnectAttempts: 0,
+  pendingIce: [], relayAvailable: false, mediaReady: false, receivedTracks: new Set(), reconnectAttempts: 0, peerCreating: null,
 };
 
 function show(id) {
@@ -111,6 +111,7 @@ function connectSignaling() {
       updateGuest(message.name); if (!state.pc) await createPeer();
     } else if (message.type === 'peer.connected') {
       if (!state.pc) await createPeer();
+      if (state.role === 'host' && state.pc?.localDescription?.type === 'offer') signal({ type: 'rtc.offer', description: state.pc.localDescription });
     } else if (message.type === 'rtc.offer') {
       if (!state.pc) await createPeer(); await state.pc.setRemoteDescription(message.description); await flushIce();
       await state.pc.setLocalDescription(await state.pc.createAnswer()); signal({ type: 'rtc.answer', description: state.pc.localDescription });
@@ -120,12 +121,12 @@ function connectSignaling() {
       if (state.pc?.remoteDescription) await state.pc.addIceCandidate(message.candidate);
       else state.pendingIce.push(message.candidate);
     } else if (message.type === 'peer.disconnected') {
-      connectionLost();
+      if (state.pc?.connectionState !== 'connected') connectionLost();
     } else if (message.type === 'room.expired') {
       toast('This room has closed.'); setTimeout(() => location.assign('/'), 1200);
     }
   };
-  ws.onclose = () => { if (state.roomId) setTimeout(connectSignaling, 1200); };
+  ws.onclose = () => { if (state.ws === ws && state.roomId) setTimeout(connectSignaling, 1200); };
 }
 
 async function flushIce() {
@@ -136,6 +137,12 @@ async function flushIce() {
 function signal(message) { if (state.ws?.readyState === WebSocket.OPEN) state.ws.send(JSON.stringify(message)); }
 
 async function createPeer() {
+  if (state.peerCreating) return state.peerCreating;
+  state.peerCreating = createPeerInternal();
+  try { return await state.peerCreating; } finally { state.peerCreating = null; }
+}
+
+async function createPeerInternal() {
   const ice = await api(`/api/rooms/${state.roomId}/ice`, { method: 'POST', body: '{}' }).catch(() => ({ iceServers: [{ urls: ['stun:stun.cloudflare.com:3478'] }], relayAvailable: false }));
   state.relayAvailable = ice.relayAvailable;
   const pc = new RTCPeerConnection({ iceServers: ice.iceServers, bundlePolicy: 'max-bundle' });
@@ -159,8 +166,10 @@ async function createPeer() {
     }
     state.receivedTracks.add(event.track.kind); video.classList.remove('hidden');
     $('#game-placeholder').classList.add('hidden');
-    if (state.receivedTracks.has('audio') && state.receivedTracks.has('video')) state.control?.send(JSON.stringify({ type: 'media.ready' }));
-    video.play().catch(() => toast('Click the game screen once to enable sound.'));
+    video.play().then(maybeReportMediaReady).catch(() => {
+      $('#enable-media').classList.remove('hidden');
+      toast('One click is needed to enable game sound.');
+    });
   };
   pc.ondatachannel = (event) => bindChannel(event.channel);
   if (state.role === 'host') {
@@ -185,12 +194,14 @@ function bindChannel(channel) {
       if (msg.type === 'start' && state.role === 'guest') beginGuestPlay();
     };
   } else if (channel.label === 'input') {
+    lastRemoteSeq = 0; remoteValues.fill(0); lastInput = ''; lastInputAt = 0;
     state.input = channel;
     channel.onmessage = (event) => applyRemoteInput(JSON.parse(event.data));
   }
   channel.onopen = () => {
     state.peerConnected = true; setCheck('#check-network', true, state.relayAvailable ? 'Connected' : 'Direct');
     if (channel.label === 'control' && state.role === 'guest') channel.send(JSON.stringify({ type: 'device.ready', ready: state.controllerReady }));
+    if (channel.label === 'control') maybeReportMediaReady();
     updateReady();
   };
 }
@@ -237,7 +248,7 @@ function sendInputValues(values, force = false) {
   state.packetCount++; lastInput = body; lastInputAt = now; $('#diag-packets').textContent = String(state.packetCount);
 }
 
-function sendNeutralInput() { keyboardState.fill(0); sendInputValues(Array(16).fill(0), true); }
+function sendNeutralInput() { if (state.role !== 'guest') return; keyboardState.fill(0); sendInputValues(Array(16).fill(0), true); }
 function sendDeviceReady() {
   if (state.role === 'guest' && state.control?.readyState === 'open') state.control.send(JSON.stringify({ type: 'device.ready', ready: state.controllerReady }));
 }
@@ -254,6 +265,9 @@ for (const type of ['keydown', 'keyup']) window.addEventListener(type, (event) =
 });
 window.addEventListener('blur', sendNeutralInput);
 document.addEventListener('visibilitychange', () => { if (document.hidden) sendNeutralInput(); });
+setInterval(() => {
+  if (state.role === 'guest' && !navigator.getGamepads?.()[0]) sendInputValues(keyboardState, true);
+}, 100);
 
 function resetRemoteInputs() {
   const simulate = window.EJS_emulator?.gameManager?.functions?.simulateInput;
@@ -288,7 +302,7 @@ function updateReady() {
 async function handleFiles(files) {
   const entries = [...files]; const rom = entries.find((f) => f.name.toLowerCase() === 'mslug2.zip'); const bios = entries.find((f) => f.name.toLowerCase() === 'neogeo.zip');
   if (!rom || !bios) { toast('Choose both mslug2.zip and neogeo.zip'); return; }
-  state.romUrl = URL.createObjectURL(rom); state.biosUrl = URL.createObjectURL(bios); state.gameReady = true;
+  state.romFile = rom; state.biosFile = bios; state.gameReady = true;
   setCheck('#check-game', true, 'Files selected'); $('#file-picker p').textContent = 'Files selected. Compatibility is checked when the arcade starts.'; updateReady();
 }
 
@@ -313,8 +327,8 @@ async function startGame() {
 
 function loadEmulator() {
   return new Promise((resolve, reject) => {
-    window.EJS_player = '#emulator-player'; window.EJS_gameName = 'Metal Slug 2'; window.EJS_gameUrl = state.romUrl;
-    window.EJS_biosUrl = state.biosUrl; window.EJS_core = 'fbneo'; window.EJS_pathtodata = '/emulatorjs/data/';
+    window.EJS_player = '#emulator-player'; window.EJS_gameName = state.romFile.name; window.EJS_gameUrl = state.romFile;
+    window.EJS_biosUrl = state.biosFile; window.EJS_core = 'fbneo'; window.EJS_pathtodata = '/emulatorjs/data/';
     window.EJS_startOnLoaded = true; window.EJS_color = '#ffb547'; window.EJS_language = 'en-US';
     window.EJS_onGameStart = () => { state.emulatorLoaded = true; $('#game-placeholder').classList.add('hidden'); resolve(); };
     const script = document.createElement('script'); script.src = '/emulatorjs/data/loader.js'; script.onerror = () => reject(new Error('Emulator failed to load')); document.body.append(script);
@@ -330,7 +344,10 @@ async function maybeAttachStream(renegotiate = false) {
   let stream = null;
   for (let attempt = 0; attempt < 20 && !stream?.getAudioTracks().length; attempt++) {
     try { stream = window.EJS_emulator?.collectScreenRecordingMediaTracks?.(canvas, 60) || canvas.captureStream(60); } catch { stream = null; }
-    if (!stream?.getAudioTracks().length) await new Promise((resolve) => setTimeout(resolve, 100));
+    if (!stream?.getAudioTracks().length) {
+      stream?.getTracks().forEach((track) => track.stop());
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
   }
   if (!stream?.getVideoTracks().length || !stream.getAudioTracks().length) throw new Error('Game audio did not initialize. Click the game once, then try again.');
   stream.getTracks().forEach((track) => state.pc.addTrack(track, stream)); state.streamStarted = true;
@@ -345,6 +362,19 @@ function waitForMedia() {
       else if (Date.now() - started > 12000) { clearInterval(timer); reject(new Error('Your friend did not receive the game stream. Check the connection and try again.')); }
     }, 100);
   });
+}
+
+function maybeReportMediaReady() {
+  const video = $('#guest-video');
+  if (state.role === 'guest' && !video.paused && state.receivedTracks.has('audio') && state.receivedTracks.has('video') && state.control?.readyState === 'open') {
+    state.control.send(JSON.stringify({ type: 'media.ready' }));
+    $('#enable-media').classList.add('hidden');
+  }
+}
+
+async function enableMedia() {
+  await $('#guest-video').play();
+  maybeReportMediaReady();
 }
 
 function beginGuestPlay() { show('game'); $('#game-placeholder').classList.remove('hidden'); }
@@ -415,6 +445,7 @@ document.addEventListener('click', (event) => {
   if (action === 'join-room') joinRoom();
   if (action === 'copy-invite') copyInvite();
   if (action === 'start-game') startGame().catch((error) => { toast(error.message); show('room'); });
+  if (action === 'enable-media') enableMedia().catch(() => toast('Sound is still blocked. Check the browser site controls.'));
   if (action === 'fullscreen') $('#game').requestFullscreen?.();
   if (action === 'game-menu') $('#diagnostics').classList.toggle('hidden');
 });

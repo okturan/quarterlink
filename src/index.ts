@@ -27,6 +27,7 @@ function securityHeaders(response: Response): Response {
 	headers.set("X-Content-Type-Options", "nosniff");
 	headers.set("Referrer-Policy", "no-referrer");
 	headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+	if (headers.get("content-type")?.includes("text/html")) headers.set("Cache-Control", "no-store");
 	headers.set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' wss: ws:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
 	return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
@@ -135,6 +136,17 @@ export class GameRoom extends DurableObject<Env> {
 		}
 	}
 
+	private sendToOtherRole(socket: WebSocket, message: unknown): void {
+		const senderRole = this.sockets.get(socket);
+		if (!senderRole) return;
+		const body = JSON.stringify(message);
+		for (const peer of this.ctx.getWebSockets()) {
+			if (this.sockets.get(peer) !== senderRole) {
+				try { peer.send(body); } catch { /* stale socket is cleaned by close/error */ }
+			}
+		}
+	}
+
 	async fetch(request: Request): Promise<Response> {
 		const session = request.headers.get("x-quarterlink-session");
 		if (!session || request.headers.get("upgrade")?.toLowerCase() !== "websocket") return new Response("Unauthorized", { status: 401 });
@@ -142,6 +154,11 @@ export class GameRoom extends DurableObject<Env> {
 		if (!snap) return new Response("Forbidden", { status: 403 });
 		const pair = new WebSocketPair();
 		const [client, server] = Object.values(pair);
+		for (const existing of this.ctx.getWebSockets()) {
+			if (this.sockets.get(existing) === snap.role) {
+				try { existing.close(4001, "Superseded by a newer connection"); } catch { /* already closed */ }
+			}
+		}
 		server.serializeAttachment({ role: snap.role, session });
 		this.ctx.acceptWebSocket(server);
 		this.sockets.set(server, snap.role);
@@ -170,13 +187,13 @@ export class GameRoom extends DurableObject<Env> {
 				await this.ctx.storage.put("room", room);
 			}
 		}
-		this.broadcast(parsed, socket);
+		this.sendToOtherRole(socket, parsed);
 	}
 
 	async webSocketClose(socket: WebSocket): Promise<void> {
 		const role = this.sockets.get(socket);
 		this.sockets.delete(socket);
-		if (role) this.broadcast({ type: "peer.disconnected", role });
+		if (role && !Array.from(this.sockets.values()).includes(role)) this.broadcast({ type: "peer.disconnected", role });
 	}
 
 	async webSocketError(socket: WebSocket): Promise<void> {
@@ -254,7 +271,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
 		if (!body || typeof body !== "object" || !Array.isArray(Reflect.get(body, "iceServers"))) return json({ error: "Invalid relay response" }, { status: 502 });
 		const iceServers = (Reflect.get(body, "iceServers") as Array<{ urls?: unknown }>).map((server) => ({
 			...server,
-			urls: Array.isArray(server.urls) ? server.urls.filter((url) => typeof url === "string" && !url.includes(":53")) : server.urls,
+			urls: Array.isArray(server.urls) ? server.urls.filter((url) => typeof url === "string" && !/:(?:53)(?:\?|$)/.test(url)) : server.urls,
 		}));
 		return json({ iceServers, relayAvailable: true });
 	}
@@ -280,7 +297,7 @@ export default {
 			let response: Response;
 			if (url.pathname.startsWith("/api/")) response = await api(request, env, url);
 			else if (request.method === "GET" && request.headers.get("accept")?.includes("text/html")) {
-				const shellUrl = new URL("/quarterlink-26df085.html", url.origin);
+				const shellUrl = new URL("/quarterlink-shell-v2.html", url.origin);
 				response = await env.ASSETS.fetch(new Request(shellUrl, request));
 			} else response = await env.ASSETS.fetch(request);
 			return response.status === 101 ? response : securityHeaders(response);

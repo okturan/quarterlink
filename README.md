@@ -7,7 +7,7 @@
 - Metal Slug 2 runs in the host browser using a pinned FBNeo WebAssembly core.
 - The guest joins without an account or installation.
 - Guest controller input travels directly to the host over an unordered WebRTC data channel.
-- The authoritative game canvas streams directly back to the guest.
+- The authoritative game canvas and emulator audio stream directly back to the guest.
 - Cloudflare Durable Objects coordinate single-use invites and WebRTC signaling only; gameplay does not travel through the Worker.
 - The in-game HUD measures peer data-channel RTT and jitter rather than misleading API latency.
 
@@ -58,8 +58,7 @@ The browser runtime vendors EmulatorJS 4.2.3 under GPL-3.0 and its FBNeo WebAsse
 
 ## Known production gates
 
-- Audio forwarding needs a direct WebAudio graph bridge; video and controller transport are implemented.
-- TURN credentials are not configured yet, so symmetric NAT/corporate networks may fail instead of relaying.
+- TURN credentials are not configured on the public deployment yet, so symmetric NAT/corporate networks may fail instead of relaying. The application is relay-ready and falls back to Cloudflare STUN when secrets are absent.
 - The current product path is authoritative streaming, not GGPO rollback. Do not market it as rollback.
 - Full device-matrix and real two-network gameplay QA must be completed with the host-provided game files before a stable release tag.
 
@@ -71,3 +70,5 @@ npm run deploy
 ```
 
 The Worker uses static assets plus the `GAME_ROOMS` Durable Object binding defined in `wrangler.jsonc`.
+
+For relay coverage, create a Cloudflare Realtime TURN key and store its key ID and token as Worker secrets named `TURN_KEY_ID` and `TURN_KEY_TOKEN`. Creating the key requires an API token with Account Realtime Calls write permission; never commit either value.

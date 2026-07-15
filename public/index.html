@@ -29,7 +29,7 @@
         <p class="lede">Open a room. Send one link. Play together in the browser—no install and no account for your friend.</p>
         <div class="actions">
           <button class="button primary" data-action="open-host">Start a room <span>→</span></button>
-          <button class="button quiet" data-action="open-join">Join with code</button>
+          <button class="button quiet" data-action="open-join">Use an invite link</button>
         </div>
         <p class="compat"><span>✓</span> Chrome or Edge &nbsp;·&nbsp; Controller recommended &nbsp;·&nbsp; No install</p>
       </div>
@@ -62,7 +62,7 @@
         <h2 id="join-title">A friend saved you a seat.</h2>
         <p class="panel-sub">Metal Slug 2 · Private two-player room</p>
         <label class="field"><span>Your display name</span><input id="guest-name" maxlength="24" autocomplete="nickname" placeholder="Emre"></label>
-        <label id="code-field" class="field hidden"><span>Invite link or room code</span><input id="room-code" autocomplete="off" placeholder="Paste your invite link"></label>
+        <label id="code-field" class="field hidden"><span>Private invite link</span><input id="room-code" autocomplete="off" inputmode="url" placeholder="Paste the complete invite link"></label>
         <button class="button primary full" data-action="join-room">Join room <span>→</span></button>
         <p class="trust"><span>◈</span> Direct encrypted connection · No account required</p>
         <p id="join-error" class="form-error" role="alert"></p>
@@ -74,7 +74,7 @@
       <div class="room-grid">
         <div class="panel cabinet-panel">
           <div class="cabinet-screen"><div class="pixel-scene"><span class="moon"></span><strong>METAL<br>SLUG 2</strong><small>MISSION START</small></div></div>
-          <div class="invite-box" id="invite-box"><div><small>INVITE YOUR FRIEND</small><strong id="room-code-display">••••-•••</strong></div><button class="button primary" data-action="copy-invite">Copy invite</button></div>
+          <div class="invite-box" id="invite-box"><div><small>PRIVATE ROOM ID</small><strong id="room-code-display">••••-•••</strong></div><button class="button primary" data-action="copy-invite">Copy invite link</button></div>
           <div class="file-picker" id="file-picker">
             <div><strong>Load your arcade files</strong><p>Select <code>mslug2.zip</code> and <code>neogeo.zip</code>. They never leave this browser.</p></div>
             <label class="button quiet file-button">Choose files<input id="game-files" type="file" accept=".zip" multiple></label>

@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 
-const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
+const JSON_HEADERS = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
 const SESSION_COOKIE = "ql_session";
 const ROOM_TTL_MS = 2 * 60 * 60 * 1000;
 
@@ -97,6 +97,16 @@ export class GameRoom extends DurableObject<Env> {
 		await this.ctx.storage.put("room", room);
 		this.broadcast({ type: "peer.joined", name: guest.name, role: "guest" });
 		return { ok: true };
+	}
+
+	async rotateInvite(session: string): Promise<{ secret: string } | null> {
+		const room = await this.state();
+		if (!room || room.peers.host?.session !== session || room.peers.guest) return null;
+		const secret = randomToken(24);
+		room.inviteHash = await sha256(secret);
+		room.inviteUsed = false;
+		await this.ctx.storage.put("room", room);
+		return { secret };
 	}
 
 	async snapshot(session: string): Promise<{ room: Omit<RoomState, "inviteHash" | "peers"> & { peers: Partial<Record<Role, Omit<Peer, "session">>> }; role: Role } | null> {
@@ -212,6 +222,41 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
 		if (!session) return json({ error: "Unauthorized" }, { status: 401 });
 		const snapshot = await env.GAME_ROOMS.getByName(roomMatch[1]).snapshot(session);
 		return snapshot ? json(snapshot) : json({ error: "Forbidden" }, { status: 403 });
+	}
+
+	const inviteMatch = url.pathname.match(/^\/api\/rooms\/([A-Za-z0-9_-]+)\/invite$/);
+	if (inviteMatch && request.method === "POST") {
+		const session = cookieValue(request);
+		if (!session) return json({ error: "Unauthorized" }, { status: 401 });
+		const result = await env.GAME_ROOMS.getByName(inviteMatch[1]).rotateInvite(session);
+		return result ? json(result) : json({ error: "Invite cannot be rotated" }, { status: 409 });
+	}
+
+	const iceMatch = url.pathname.match(/^\/api\/rooms\/([A-Za-z0-9_-]+)\/ice$/);
+	if (iceMatch && request.method === "POST") {
+		const session = cookieValue(request);
+		if (!session || !(await env.GAME_ROOMS.getByName(iceMatch[1]).snapshot(session))) return json({ error: "Unauthorized" }, { status: 401 });
+		const turnKeyId = Reflect.get(env, "TURN_KEY_ID");
+		const turnKeyToken = Reflect.get(env, "TURN_KEY_TOKEN");
+		if (typeof turnKeyId !== "string" || typeof turnKeyToken !== "string") {
+			return json({ iceServers: [{ urls: ["stun:stun.cloudflare.com:3478"] }], relayAvailable: false });
+		}
+		const response = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(turnKeyId)}/credentials/generate-ice-servers`, {
+			method: "POST",
+			headers: { authorization: `Bearer ${turnKeyToken}`, "content-type": "application/json" },
+			body: JSON.stringify({ ttl: 7200 }),
+		});
+		if (response.status !== 201) {
+			console.error(JSON.stringify({ event: "turn_mint_failed", status: response.status }));
+			return json({ iceServers: [{ urls: ["stun:stun.cloudflare.com:3478"] }], relayAvailable: false });
+		}
+		const body: unknown = await response.json();
+		if (!body || typeof body !== "object" || !Array.isArray(Reflect.get(body, "iceServers"))) return json({ error: "Invalid relay response" }, { status: 502 });
+		const iceServers = (Reflect.get(body, "iceServers") as Array<{ urls?: unknown }>).map((server) => ({
+			...server,
+			urls: Array.isArray(server.urls) ? server.urls.filter((url) => typeof url === "string" && !url.includes(":53")) : server.urls,
+		}));
+		return json({ iceServers, relayAvailable: true });
 	}
 
 	const wsMatch = url.pathname.match(/^\/api\/rooms\/([A-Za-z0-9_-]+)\/ws$/);

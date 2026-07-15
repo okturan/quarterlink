@@ -3,8 +3,9 @@ const views = [...document.querySelectorAll('.view')];
 const state = {
   roomId: null, role: null, inviteSecret: null, ws: null, pc: null,
   control: null, input: null, peerConnected: false, controllerReady: false,
-  gameReady: false, romUrl: null, biosUrl: null, pingSeq: 0, pings: new Map(),
+  gameReady: false, guestReady: false, guestDeviceReady: false, romUrl: null, biosUrl: null, pingSeq: 0, pings: new Map(),
   rtts: [], jitter: 0, packetCount: 0, emulatorLoaded: false, streamStarted: false,
+  pendingIce: [], relayAvailable: false, mediaReady: false, receivedTracks: new Set(), reconnectAttempts: 0,
 };
 
 function show(id) {
@@ -47,6 +48,7 @@ async function createRoom() {
   try {
     const result = await api('/api/rooms', { method: 'POST', body: JSON.stringify({ name }) });
     saveName(input); state.roomId = result.roomId; state.inviteSecret = result.inviteSecret; state.role = 'host';
+    sessionStorage.setItem(`quarterlink.invite.${state.roomId}`, state.inviteSecret);
     history.replaceState({}, '', `/room/${state.roomId}`); await enterRoom();
   } catch (error) { $('#setup-error').textContent = error.message; }
 }
@@ -74,6 +76,14 @@ async function enterRoom() {
   $('#invite-box').classList.toggle('hidden', state.role !== 'host');
   $('#file-picker').classList.toggle('hidden', state.role !== 'host');
   updateGuest(guest?.name);
+  if (state.role === 'host' && !guest) {
+    state.inviteSecret = sessionStorage.getItem(`quarterlink.invite.${state.roomId}`);
+    if (!state.inviteSecret) {
+      const rotated = await api(`/api/rooms/${state.roomId}/invite`, { method: 'POST', body: '{}' });
+      state.inviteSecret = rotated.secret;
+      sessionStorage.setItem(`quarterlink.invite.${state.roomId}`, state.inviteSecret);
+    }
+  }
   show('room'); connectSignaling(); startControllerProbe(); updateReady();
 }
 
@@ -102,39 +112,55 @@ function connectSignaling() {
     } else if (message.type === 'peer.connected') {
       if (!state.pc) await createPeer();
     } else if (message.type === 'rtc.offer') {
-      if (!state.pc) await createPeer(); await state.pc.setRemoteDescription(message.description);
+      if (!state.pc) await createPeer(); await state.pc.setRemoteDescription(message.description); await flushIce();
       await state.pc.setLocalDescription(await state.pc.createAnswer()); signal({ type: 'rtc.answer', description: state.pc.localDescription });
     } else if (message.type === 'rtc.answer') {
-      await state.pc?.setRemoteDescription(message.description);
+      await state.pc?.setRemoteDescription(message.description); await flushIce();
     } else if (message.type === 'rtc.ice' && message.candidate) {
-      await state.pc?.addIceCandidate(message.candidate).catch(() => {});
+      if (state.pc?.remoteDescription) await state.pc.addIceCandidate(message.candidate);
+      else state.pendingIce.push(message.candidate);
     } else if (message.type === 'peer.disconnected') {
       connectionLost();
     } else if (message.type === 'room.expired') {
       toast('This room has closed.'); setTimeout(() => location.assign('/'), 1200);
     }
   };
-  ws.onclose = () => {
-    if (state.roomId && !state.peerConnected) setTimeout(connectSignaling, 1200);
-  };
+  ws.onclose = () => { if (state.roomId) setTimeout(connectSignaling, 1200); };
+}
+
+async function flushIce() {
+  const queued = state.pendingIce.splice(0);
+  for (const candidate of queued) await state.pc?.addIceCandidate(candidate).catch(() => {});
 }
 
 function signal(message) { if (state.ws?.readyState === WebSocket.OPEN) state.ws.send(JSON.stringify(message)); }
 
 async function createPeer() {
-  const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }], bundlePolicy: 'max-bundle' });
+  const ice = await api(`/api/rooms/${state.roomId}/ice`, { method: 'POST', body: '{}' }).catch(() => ({ iceServers: [{ urls: ['stun:stun.cloudflare.com:3478'] }], relayAvailable: false }));
+  state.relayAvailable = ice.relayAvailable;
+  const pc = new RTCPeerConnection({ iceServers: ice.iceServers, bundlePolicy: 'max-bundle' });
   state.pc = pc;
   pc.onicecandidate = ({ candidate }) => candidate && signal({ type: 'rtc.ice', candidate });
   pc.onconnectionstatechange = () => {
     const connected = pc.connectionState === 'connected';
     state.peerConnected = connected;
     setCheck('#check-network', connected, connected ? 'Direct' : 'Checking'); updateReady();
-    if (connected) { startPing(); $('#connection-overlay').classList.add('hidden'); }
+    if (connected) { state.reconnectAttempts = 0; startPing(); $('#connection-overlay').classList.add('hidden'); updateTransportStats(); }
     if (['failed', 'disconnected'].includes(pc.connectionState)) connectionLost();
   };
   pc.ontrack = (event) => {
-    const video = $('#guest-video'); video.srcObject = event.streams[0]; video.classList.remove('hidden');
+    const video = $('#guest-video');
+    const stream = event.streams[0];
+    if (stream) video.srcObject = stream;
+    else {
+      const current = video.srcObject instanceof MediaStream ? video.srcObject : new MediaStream();
+      if (!current.getTracks().some((track) => track.id === event.track.id)) current.addTrack(event.track);
+      video.srcObject = current;
+    }
+    state.receivedTracks.add(event.track.kind); video.classList.remove('hidden');
     $('#game-placeholder').classList.add('hidden');
+    if (state.receivedTracks.has('audio') && state.receivedTracks.has('video')) state.control?.send(JSON.stringify({ type: 'media.ready' }));
+    video.play().catch(() => toast('Click the game screen once to enable sound.'));
   };
   pc.ondatachannel = (event) => bindChannel(event.channel);
   if (state.role === 'host') {
@@ -152,54 +178,110 @@ function bindChannel(channel) {
       const msg = JSON.parse(event.data);
       if (msg.type === 'ping') channel.send(JSON.stringify({ type: 'pong', seq: msg.seq, at: performance.now() }));
       if (msg.type === 'pong') recordPong(msg.seq);
+      if (msg.type === 'device.ready' && state.role === 'host') { state.guestDeviceReady = Boolean(msg.ready); updateReady(); }
+      if (msg.type === 'seat.ready' && state.role === 'host') { state.guestReady = Boolean(msg.ready); updateReady(); }
+      if (msg.type === 'prepare' && state.role === 'guest') { show('loading'); $('#loading-title').textContent = 'Your friend is starting the arcade'; }
+      if (msg.type === 'media.ready' && state.role === 'host') state.mediaReady = true;
       if (msg.type === 'start' && state.role === 'guest') beginGuestPlay();
     };
   } else if (channel.label === 'input') {
     state.input = channel;
     channel.onmessage = (event) => applyRemoteInput(JSON.parse(event.data));
   }
-  channel.onopen = () => { state.peerConnected = true; setCheck('#check-network', true, 'Direct'); updateReady(); };
+  channel.onopen = () => {
+    state.peerConnected = true; setCheck('#check-network', true, state.relayAvailable ? 'Connected' : 'Direct');
+    if (channel.label === 'control' && state.role === 'guest') channel.send(JSON.stringify({ type: 'device.ready', ready: state.controllerReady }));
+    updateReady();
+  };
 }
 
 function startControllerProbe() {
+  let hadPad = false;
   const poll = () => {
     if (!state.roomId) return;
     const pad = navigator.getGamepads?.()[0];
     if (pad && !state.controllerReady) {
-      state.controllerReady = true; setCheck('#check-controller', true, pad.id.slice(0, 18)); updateReady();
+      state.controllerReady = true; hadPad = true; setCheck('#check-controller', true, pad.id.slice(0, 18)); sendDeviceReady(); updateReady();
     }
     if (state.role === 'guest' && state.input?.readyState === 'open' && pad) sendGamepad(pad);
+    if (!pad && hadPad) { hadPad = false; sendNeutralInput(); state.controllerReady = false; state.guestReady = false; setCheck('#check-controller', false, 'Disconnected'); sendDeviceReady(); sendSeatReady(false); updateReady(); }
     requestAnimationFrame(poll);
   };
   requestAnimationFrame(poll);
-  window.addEventListener('keydown', () => {
-    if (!state.controllerReady) { state.controllerReady = true; setCheck('#check-controller', true, 'Keyboard'); updateReady(); }
-  }, { once: true });
 }
 
+const GAMEPAD_TO_LIBRETRO = [8, 0, 9, 1, 10, 11, 12, 13, 2, 3, 14, 15, 4, 5, 6, 7];
+const KEY_TO_LIBRETRO = { ArrowUp: 4, ArrowDown: 5, ArrowLeft: 6, ArrowRight: 7, KeyZ: 0, KeyX: 8, KeyA: 1, KeyS: 9, Enter: 3, ShiftRight: 2 };
+let inputSeq = 0;
 let lastInput = '';
+let lastInputAt = 0;
+let lastRemoteSeq = 0;
+const keyboardState = Array(16).fill(0);
+const remoteValues = Array(16).fill(0);
+
 function sendGamepad(pad) {
-  const payload = { type: 'input', buttons: pad.buttons.map((b) => b.value), axes: pad.axes.map((v) => Math.round(v * 100) / 100) };
-  const encoded = JSON.stringify(payload);
-  if (encoded !== lastInput) { state.input.send(encoded); state.packetCount++; lastInput = encoded; $('#diag-packets').textContent = String(state.packetCount); }
+  const values = Array(16).fill(0);
+  GAMEPAD_TO_LIBRETRO.forEach((target, physical) => { values[target] = pad.buttons[physical]?.pressed ? 1 : 0; });
+  const x = pad.axes[0] || 0; const y = pad.axes[1] || 0;
+  if (Math.abs(x) > .45) values[x < 0 ? 6 : 7] = 1;
+  if (Math.abs(y) > .45) values[y < 0 ? 4 : 5] = 1;
+  keyboardState.forEach((value, index) => { if (value) values[index] = value; });
+  sendInputValues(values);
+}
+
+function sendInputValues(values, force = false) {
+  if (state.input?.readyState !== 'open') return;
+  const now = performance.now(); const body = JSON.stringify(values);
+  if (!force && body === lastInput && now - lastInputAt < 100) return;
+  state.input.send(JSON.stringify({ type: 'input', seq: ++inputSeq, values }));
+  state.packetCount++; lastInput = body; lastInputAt = now; $('#diag-packets').textContent = String(state.packetCount);
+}
+
+function sendNeutralInput() { keyboardState.fill(0); sendInputValues(Array(16).fill(0), true); }
+function sendDeviceReady() {
+  if (state.role === 'guest' && state.control?.readyState === 'open') state.control.send(JSON.stringify({ type: 'device.ready', ready: state.controllerReady }));
+}
+function sendSeatReady(ready) {
+  if (state.role === 'guest' && state.control?.readyState === 'open') state.control.send(JSON.stringify({ type: 'seat.ready', ready }));
+}
+
+for (const type of ['keydown', 'keyup']) window.addEventListener(type, (event) => {
+  const index = KEY_TO_LIBRETRO[event.code];
+  if (index === undefined || state.role !== 'guest') return;
+  event.preventDefault(); keyboardState[index] = type === 'keydown' ? 1 : 0;
+  if (!state.controllerReady) { state.controllerReady = true; setCheck('#check-controller', true, 'Keyboard'); sendDeviceReady(); updateReady(); }
+  sendInputValues(keyboardState, true);
+});
+window.addEventListener('blur', sendNeutralInput);
+document.addEventListener('visibilitychange', () => { if (document.hidden) sendNeutralInput(); });
+
+function resetRemoteInputs() {
+  const simulate = window.EJS_emulator?.gameManager?.functions?.simulateInput;
+  if (simulate) remoteValues.forEach((_, index) => simulate(1, index, 0));
+  remoteValues.fill(0);
 }
 
 function applyRemoteInput(message) {
   const manager = window.EJS_emulator?.gameManager;
   const simulate = manager?.functions?.simulateInput?.bind(manager.functions) || manager?.simulateInput?.bind(manager);
-  if (!simulate || message.type !== 'input') return;
-  message.buttons.forEach((value, index) => simulate(1, index, value));
-  message.axes.forEach((value, index) => simulate(1, 16 + index, value));
+  if (!simulate || message.type !== 'input' || !Array.isArray(message.values) || message.seq <= lastRemoteSeq) return;
+  lastRemoteSeq = message.seq;
+  message.values.slice(0, 16).forEach((value, index) => {
+    const normalized = value ? 1 : 0;
+    if (remoteValues[index] !== normalized) { remoteValues[index] = normalized; simulate(1, index, normalized); }
+  });
 }
 
 function updateReady() {
   const button = $('#play-button');
   if (state.role === 'guest') {
-    button.textContent = state.peerConnected ? 'Ready — waiting for host' : 'Connecting to host'; button.disabled = true;
+    button.textContent = state.guestReady ? 'Ready — waiting for host' : state.peerConnected ? "I'm ready" : 'Connecting to host';
+    button.disabled = !state.peerConnected || !state.controllerReady || state.guestReady;
     setCheck('#check-game', state.peerConnected, state.peerConnected ? 'Stream ready' : 'Host provides');
   } else {
-    const ready = state.controllerReady && state.gameReady && state.peerConnected;
-    button.disabled = !ready; button.textContent = ready ? 'Start Metal Slug 2 →' : !state.gameReady ? 'Choose both game files' : !state.peerConnected ? 'Waiting for your friend' : 'Connect a controller';
+    const ready = state.controllerReady && state.gameReady && state.peerConnected && state.guestDeviceReady && state.guestReady;
+    button.disabled = !ready;
+    button.textContent = ready ? 'Start Metal Slug 2 →' : !state.gameReady ? 'Choose both game files' : !state.peerConnected ? 'Waiting for your friend' : !state.guestDeviceReady ? 'Player two needs a controller or keyboard' : !state.guestReady ? 'Waiting for player two to ready up' : 'Connect a controller';
   }
 }
 
@@ -207,18 +289,26 @@ async function handleFiles(files) {
   const entries = [...files]; const rom = entries.find((f) => f.name.toLowerCase() === 'mslug2.zip'); const bios = entries.find((f) => f.name.toLowerCase() === 'neogeo.zip');
   if (!rom || !bios) { toast('Choose both mslug2.zip and neogeo.zip'); return; }
   state.romUrl = URL.createObjectURL(rom); state.biosUrl = URL.createObjectURL(bios); state.gameReady = true;
-  setCheck('#check-game', true, 'Verified locally'); $('#file-picker p').textContent = 'Metal Slug 2 and Neo Geo BIOS ready — files remain local.'; updateReady();
+  setCheck('#check-game', true, 'Files selected'); $('#file-picker p').textContent = 'Files selected. Compatibility is checked when the arcade starts.'; updateReady();
 }
 
 async function startGame() {
-  if (state.role !== 'host' || !state.gameReady || !state.peerConnected) return;
+  if (state.role === 'guest') {
+    if (!state.peerConnected || !state.controllerReady) return;
+    state.guestReady = true; sendDeviceReady(); sendSeatReady(true); updateReady(); toast('Ready — your friend can start the run.'); return;
+  }
+  if (!state.gameReady || !state.peerConnected || !state.guestReady) return;
+  state.control?.send(JSON.stringify({ type: 'prepare' }));
   show('loading');
-  setTimeout(() => $('#stage-connect').classList.add('done'), 450);
-  setTimeout(() => $('#stage-connect').textContent = '✓ Connected directly', 450);
-  setTimeout(() => { $('#stage-sync').classList.add('done'); $('#stage-sync').textContent = '✓ Syncing players'; }, 850);
+  $('#stage-connect').classList.add('done'); $('#stage-connect').textContent = `✓ ${state.relayAvailable ? 'Connection established' : 'Connected directly'}`;
   await loadEmulator();
+  $('#stage-sync').classList.add('done'); $('#stage-sync').textContent = '✓ Game compatibility confirmed';
+  show('game');
+  state.mediaReady = false;
+  await maybeAttachStream(true);
+  await waitForMedia();
   $('#stage-ready').classList.add('done'); $('#stage-ready').textContent = '✓ Ready';
-  setTimeout(async () => { show('game'); await maybeAttachStream(true); state.control?.send(JSON.stringify({ type: 'start' })); }, 450);
+  state.control?.send(JSON.stringify({ type: 'start' }));
 }
 
 function loadEmulator() {
@@ -237,20 +327,64 @@ async function maybeAttachStream(renegotiate = false) {
   const canvas = $('#emulator-player canvas'); if (!canvas?.captureStream) return;
   // EmulatorJS bridges its OpenAL/WebAudio graph into this capture stream,
   // giving the guest synchronized game audio without a screen-share prompt.
-  const stream = window.EJS_emulator?.collectScreenRecordingMediaTracks?.(canvas, 60) || canvas.captureStream(60);
+  let stream = null;
+  for (let attempt = 0; attempt < 20 && !stream?.getAudioTracks().length; attempt++) {
+    try { stream = window.EJS_emulator?.collectScreenRecordingMediaTracks?.(canvas, 60) || canvas.captureStream(60); } catch { stream = null; }
+    if (!stream?.getAudioTracks().length) await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  if (!stream?.getVideoTracks().length || !stream.getAudioTracks().length) throw new Error('Game audio did not initialize. Click the game once, then try again.');
   stream.getTracks().forEach((track) => state.pc.addTrack(track, stream)); state.streamStarted = true;
   if (renegotiate) { await state.pc.setLocalDescription(await state.pc.createOffer()); signal({ type: 'rtc.offer', description: state.pc.localDescription }); }
 }
 
+function waitForMedia() {
+  return new Promise((resolve, reject) => {
+    const started = Date.now();
+    const timer = setInterval(() => {
+      if (state.mediaReady) { clearInterval(timer); resolve(); }
+      else if (Date.now() - started > 12000) { clearInterval(timer); reject(new Error('Your friend did not receive the game stream. Check the connection and try again.')); }
+    }, 100);
+  });
+}
+
 function beginGuestPlay() { show('game'); $('#game-placeholder').classList.remove('hidden'); }
-function connectionLost() { state.peerConnected = false; if (!$('#game').classList.contains('hidden')) $('#connection-overlay').classList.remove('hidden'); }
+function connectionLost() {
+  if (!state.peerConnected && state.reconnectAttempts) return;
+  state.peerConnected = false; state.guestReady = false; state.guestDeviceReady = false; resetRemoteInputs(); updateReady();
+  if (!$('#game').classList.contains('hidden')) $('#connection-overlay').classList.remove('hidden');
+  if (state.role === 'host') setTimeout(restartConnection, 2500);
+}
+
+async function restartConnection() {
+  if (!state.pc || state.pc.connectionState === 'connected' || state.reconnectAttempts >= 3) return;
+  state.reconnectAttempts++;
+  try {
+    state.pc.restartIce();
+    await state.pc.setLocalDescription(await state.pc.createOffer({ iceRestart: true }));
+    signal({ type: 'rtc.offer', description: state.pc.localDescription });
+    setTimeout(restartConnection, 5000);
+  } catch { setTimeout(restartConnection, 2500); }
+}
 
 function startPing() {
   if (startPing.timer) return;
   startPing.timer = setInterval(() => {
     if (state.control?.readyState !== 'open') return;
     const seq = ++state.pingSeq; state.pings.set(seq, performance.now()); state.control.send(JSON.stringify({ type: 'ping', seq }));
+    updateTransportStats();
   }, 1000);
+}
+
+async function updateTransportStats() {
+  if (!state.pc) return;
+  const stats = await state.pc.getStats().catch(() => null); if (!stats) return;
+  let pair;
+  stats.forEach((report) => { if (report.type === 'candidate-pair' && report.state === 'succeeded' && report.nominated) pair = report; });
+  if (!pair) return;
+  const local = stats.get(pair.localCandidateId); const remote = stats.get(pair.remoteCandidateId);
+  const relayed = local?.candidateType === 'relay' || remote?.candidateType === 'relay';
+  $('#diag-transport').textContent = relayed ? 'TURN relay' : 'Direct peer-to-peer';
+  setCheck('#check-network', true, relayed ? 'Relay' : 'Direct');
 }
 function recordPong(seq) {
   const started = state.pings.get(seq); if (!started) return; state.pings.delete(seq);
@@ -261,9 +395,15 @@ function recordPong(seq) {
   $('#diag-rtt').textContent = `${Math.round(median)} ms`; $('#diag-jitter').textContent = `${state.jitter.toFixed(1)} ms`;
 }
 
-function copyInvite() {
+async function copyInvite() {
+  if (!state.inviteSecret) { toast('Preparing a fresh invite…'); return; }
   const url = `${location.origin}/join/${state.roomId}#${state.inviteSecret}`;
-  navigator.clipboard.writeText(url).then(() => toast('Invite copied — send it to your friend.'));
+  try { await navigator.clipboard.writeText(url); }
+  catch {
+    const input = document.createElement('textarea'); input.value = url; input.style.position = 'fixed'; input.style.opacity = '0';
+    document.body.append(input); input.select(); document.execCommand('copy'); input.remove();
+  }
+  toast('Invite copied — send it to your friend.');
 }
 
 document.addEventListener('click', (event) => {
@@ -283,6 +423,11 @@ $('#game-files').addEventListener('change', (event) => handleFiles(event.target.
 
 const remembered = localStorage.getItem('quarterlink.name') || '';
 $('#host-name').value = remembered; $('#guest-name').value = remembered;
+const supported = typeof RTCPeerConnection !== 'undefined' && typeof WebAssembly !== 'undefined' && 'captureStream' in HTMLCanvasElement.prototype;
+if (!supported) {
+  document.querySelectorAll('[data-action="open-host"], [data-action="open-join"]').forEach((button) => { button.disabled = true; });
+  toast('QuarterLink requires a current Chrome or Edge browser.');
+}
 const invite = parseInvite();
 if (invite) { state.roomId = invite.roomId; $('#join-title').textContent = 'Your friend saved you a seat.'; show('join'); }
 else if (location.pathname.startsWith('/room/')) {

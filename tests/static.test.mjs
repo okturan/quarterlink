@@ -34,4 +34,21 @@ test('client uses direct WebRTC channels and local object URLs', () => {
   assert.match(client, /maxRetransmits: 0/);
   assert.match(client, /URL\.createObjectURL\(rom\)/);
   assert.match(client, /canvas\.captureStream\(60\)/);
+  assert.match(client, /collectScreenRecordingMediaTracks/);
+  assert.match(client, /GAMEPAD_TO_LIBRETRO = \[8, 0, 9, 1, 10, 11, 12, 13, 2, 3, 14, 15, 4, 5, 6, 7\]/);
+  assert.match(client, /receivedTracks\.has\('audio'\).*receivedTracks\.has\('video'\)/);
+  assert.match(client, /type: 'seat\.ready'/);
+});
+
+test('room recovery, relay credentials, and websocket origin checks are wired', () => {
+  assert.match(client, /quarterlink\.invite\./);
+  assert.match(worker, /\/credentials\/generate-ice-servers/);
+  assert.match(worker, /origin !== url\.origin/);
+  assert.match(worker, /cache-control.*no-store/);
+});
+
+test('join UI asks for the complete private link, not a fake join code', () => {
+  assert.match(html, /Use an invite link/);
+  assert.match(html, /Paste the complete invite link/);
+  assert.doesNotMatch(html, /Join with code|Invite link or room code/);
 });

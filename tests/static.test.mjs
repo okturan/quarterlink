@@ -61,6 +61,8 @@ test('room recovery, relay credentials, and websocket origin checks are wired', 
   assert.match(worker, /Superseded by a newer connection/);
   assert.match(worker, /async removeGuest/);
   assert.match(client, /resetGuestSeat/);
+  assert.match(client, /showConnectionOverlay\('failed'\)/);
+  assert.match(client, /now - started > 10000/);
   assert.match(worker, /cache-control.*no-store/);
 });
 

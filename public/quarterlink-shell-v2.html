@@ -103,7 +103,7 @@
     <section id="game" class="view hidden game-view">
       <div class="game-topbar"><div class="brand mini"><span class="coin">Q</span></div><div id="game-peer-label">P1 + P2</div><button id="quality-pill" class="quality-pill">— ms · Connecting</button><div class="game-tools"><button data-action="fullscreen" aria-label="Fullscreen">⛶</button><button data-action="game-menu" aria-label="Game menu">•••</button></div></div>
       <div id="emulator-host" class="emulator-frame"><div id="emulator-player"></div><video id="guest-video" autoplay playsinline></video><div id="game-placeholder"><div class="loader-ring"></div><strong>Starting the arcade…</strong></div></div>
-      <div id="connection-overlay" class="connection-overlay hidden"><div class="loader-ring"></div><h2>Reconnecting…</h2><p>The game is paused while we bring your friend back.</p></div>
+      <div id="connection-overlay" class="connection-overlay hidden" role="alert" aria-live="assertive"><div class="loader-ring"></div><h2 id="connection-title">Reconnecting…</h2><p id="connection-copy">The game is paused while we bring your friend back.</p><div><button id="retry-connection" class="button primary hidden" data-action="retry-connection">Try again</button><button id="end-session" class="button quiet hidden" data-action="end-session">End session</button></div></div>
       <div id="diagnostics" class="diagnostics hidden"><strong>Connection details</strong><dl><div><dt>Transport</dt><dd id="diag-transport">Direct</dd></div><div><dt>Round trip</dt><dd id="diag-rtt">—</dd></div><div><dt>Jitter</dt><dd id="diag-jitter">—</dd></div><div><dt>Packets</dt><dd id="diag-packets">0</dd></div></dl></div>
     </section>
   </main>

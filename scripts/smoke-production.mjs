@@ -81,6 +81,22 @@ const replacementHost = await openSocket(hostCookie);
 assert.equal((await replacementHost.next((message) => message.type === 'room.snapshot')).role, 'host');
 assert.equal(await oldHostClosed, 4001);
 
+const removedGuestClosed = new Promise((resolve) => { guest.socket.onclose = (event) => resolve(event.code); });
+const removeGuest = await fetch(`${base}/api/rooms/${roomId}/guest`, {
+  method: 'DELETE', headers: { cookie: hostCookie, 'content-type': 'application/json' }, body: '{}',
+});
+assert.equal(removeGuest.status, 200);
+const { secret: replacementSecret } = await removeGuest.json();
+assert.equal(await removedGuestClosed, 4002);
+
+const replacementRedeem = await fetch(`${base}/api/rooms/${roomId}/redeem`, {
+  method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Replacement smoke guest', secret: replacementSecret }),
+});
+assert.equal(replacementRedeem.status, 200);
+const replacementGuestCookie = replacementRedeem.headers.getSetCookie()[0].split(';')[0];
+const replacementGuest = await openSocket(replacementGuestCookie);
+assert.equal((await replacementGuest.next((message) => message.type === 'room.snapshot')).role, 'guest');
+
 replacementHost.socket.close();
-guest.socket.close();
-console.log(JSON.stringify({ ok: true, base, navigation: 3, room: roomId, relayAvailable: iceBody.relayAvailable, signaling: 'bidirectional', socketReplacement: 'passed' }));
+replacementGuest.socket.close();
+console.log(JSON.stringify({ ok: true, base, navigation: 3, room: roomId, relayAvailable: iceBody.relayAvailable, signaling: 'bidirectional', socketReplacement: 'passed', guestRecovery: 'passed' }));

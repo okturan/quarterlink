@@ -13,6 +13,8 @@
 
 The host supplies `mslug2.zip` and `neogeo.zip` in the room. Files remain local and are never uploaded. QuarterLink does not contain or distribute game ROMs.
 
+For hardware and connection testing without proprietary files, the room also offers Frog Feast, a freely distributable two-player CPS-1 homebrew game. Its source, transformation, hashes, and permission notice are recorded in [`public/demo/NOTICE.md`](public/demo/NOTICE.md).
+
 ## Run locally
 
 ```bash
@@ -27,9 +29,12 @@ Open `http://localhost:8787` in current Chrome or Edge. Create a room, select bo
 ```bash
 npm test
 npm run check
+npm run smoke:prod
 ```
 
 `npm run check` regenerates Cloudflare binding types, type-checks the Worker, and performs a Wrangler deployment dry-run.
+
+`npm run smoke:prod` exercises the deployed navigation shell, authenticated room creation, delayed guest signaling, bidirectional SDP forwarding, same-role socket replacement, guest removal, fresh invitation rotation, and replacement guest admission.
 
 ## Architecture
 

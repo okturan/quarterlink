@@ -158,7 +158,7 @@ async function createPeerInternal() {
   pc.onconnectionstatechange = () => {
     const connected = pc.connectionState === 'connected';
     state.peerConnected = connected;
-    setCheck('#check-network', connected, connected ? 'Direct' : 'Checking'); updateReady();
+    setCheck('#check-network', connected, connected ? 'Connected' : 'Checking'); updateReady();
     if (connected) { state.reconnectAttempts = 0; startPing(); $('#connection-overlay').classList.add('hidden'); updateTransportStats(); }
     if (['failed', 'disconnected'].includes(pc.connectionState)) connectionLost();
   };
@@ -206,7 +206,7 @@ function bindChannel(channel) {
     channel.onmessage = (event) => applyRemoteInput(JSON.parse(event.data));
   }
   channel.onopen = () => {
-    state.peerConnected = true; setCheck('#check-network', true, state.relayAvailable ? 'Connected' : 'Direct');
+    state.peerConnected = true; setCheck('#check-network', true, 'Detecting route');
     if (channel.label === 'control' && state.role === 'guest') channel.send(JSON.stringify({ type: 'device.ready', ready: state.controllerReady }));
     if (channel.label === 'control') maybeReportMediaReady();
     updateReady();
@@ -331,7 +331,7 @@ async function startGame() {
   if (!state.gameReady || !state.peerConnected || !state.guestReady) return;
   state.control?.send(JSON.stringify({ type: 'prepare' }));
   show('loading');
-  $('#stage-connect').classList.add('done'); $('#stage-connect').textContent = `✓ ${state.relayAvailable ? 'Connection established' : 'Connected directly'}`;
+  $('#stage-connect').classList.add('done'); $('#stage-connect').textContent = '✓ Encrypted connection established';
   await loadEmulator();
   $('#stage-sync').classList.add('done'); $('#stage-sync').textContent = '✓ Game compatibility confirmed';
   show('game');
@@ -399,12 +399,13 @@ function beginGuestPlay() { show('game'); $('#game-placeholder').classList.remov
 function connectionLost() {
   if (!state.peerConnected && state.reconnectAttempts) return;
   state.peerConnected = false; state.guestReady = false; state.guestDeviceReady = false; resetRemoteInputs(); updateReady();
-  if (!$('#game').classList.contains('hidden')) $('#connection-overlay').classList.remove('hidden');
+  if (!$('#game').classList.contains('hidden')) showConnectionOverlay('reconnecting');
   if (state.role === 'host') setTimeout(restartConnection, 2500);
 }
 
 async function restartConnection() {
-  if (!state.pc || state.pc.connectionState === 'connected' || state.reconnectAttempts >= 3) return;
+  if (!state.pc || state.pc.connectionState === 'connected') return;
+  if (state.reconnectAttempts >= 3) { showConnectionOverlay('failed'); return; }
   state.reconnectAttempts++;
   try {
     state.pc.restartIce();
@@ -414,11 +415,26 @@ async function restartConnection() {
   } catch { setTimeout(restartConnection, 2500); }
 }
 
+function showConnectionOverlay(mode) {
+  const failed = mode === 'failed';
+  $('#connection-overlay').classList.remove('hidden');
+  $('#connection-title').textContent = failed ? 'Connection could not be restored' : `Reconnecting${state.reconnectAttempts ? ` · attempt ${state.reconnectAttempts + 1} of 3` : '…'}`;
+  $('#connection-copy').textContent = failed ? 'Your game is still open on the host. Retry the connection or end this session.' : 'The game is paused while we bring your friend back.';
+  $('#retry-connection').classList.toggle('hidden', !failed);
+  $('#end-session').classList.toggle('hidden', !failed);
+}
+
+function retryConnection() {
+  state.reconnectAttempts = 0; showConnectionOverlay('reconnecting'); restartConnection();
+}
+
 function startPing() {
   if (startPing.timer) return;
   startPing.timer = setInterval(() => {
     if (state.control?.readyState !== 'open') return;
-    const seq = ++state.pingSeq; state.pings.set(seq, performance.now()); state.control.send(JSON.stringify({ type: 'ping', seq }));
+    const now = performance.now();
+    for (const [pendingSeq, started] of state.pings) if (now - started > 10000) state.pings.delete(pendingSeq);
+    const seq = ++state.pingSeq; state.pings.set(seq, now); state.control.send(JSON.stringify({ type: 'ping', seq }));
     updateTransportStats();
   }, 1000);
 }
@@ -476,6 +492,8 @@ document.addEventListener('click', (event) => {
   if (action === 'load-demo') loadDemo().catch((error) => toast(error.message));
   if (action === 'start-game') startGame().catch((error) => { toast(error.message); show('room'); });
   if (action === 'enable-media') enableMedia().catch(() => toast('Sound is still blocked. Check the browser site controls.'));
+  if (action === 'retry-connection') retryConnection();
+  if (action === 'end-session') location.assign('/');
   if (action === 'fullscreen') $('#game').requestFullscreen?.();
   if (action === 'game-menu') $('#diagnostics').classList.toggle('hidden');
 });

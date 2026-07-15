@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import { readFile, stat } from 'node:fs/promises';
+import test from 'node:test';
+
+const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+const client = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+const worker = await readFile(new URL('../src/index.ts', import.meta.url), 'utf8');
+
+test('critical product views and controls are present', () => {
+  for (const id of ['landing', 'setup', 'join', 'room', 'loading', 'game', 'game-files', 'quality-pill']) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
+});
+
+test('all runtime scripts are same-origin', () => {
+  assert.doesNotMatch(html, /<script[^>]+src=["']https?:\/\//i);
+  assert.doesNotMatch(client, /cdn\.|unpkg|jsdelivr/i);
+});
+
+test('pinned FBNeo runtime assets are vendored', async () => {
+  const core = await stat(new URL('../public/emulatorjs/data/cores/fbneo-wasm.data', import.meta.url));
+  assert.ok(core.size > 8_000_000, `unexpected core size ${core.size}`);
+  await stat(new URL('../public/emulatorjs/data/loader.js', import.meta.url));
+});
+
+test('room snapshots explicitly strip sensitive tokens', () => {
+  assert.match(worker, /session: _session/);
+  assert.match(worker, /inviteHash: _inviteHash/);
+  assert.match(worker, /crypto\.getRandomValues/);
+});
+
+test('client uses direct WebRTC channels and local object URLs', () => {
+  assert.match(client, /new RTCPeerConnection/);
+  assert.match(client, /maxRetransmits: 0/);
+  assert.match(client, /URL\.createObjectURL\(rom\)/);
+  assert.match(client, /canvas\.captureStream\(60\)/);
+});

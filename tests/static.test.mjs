@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import test from 'node:test';
 
@@ -22,6 +23,14 @@ test('pinned FBNeo runtime assets are vendored', async () => {
   const core = await stat(new URL('../public/emulatorjs/data/cores/fbneo-wasm.data', import.meta.url));
   assert.ok(core.size > 8_000_000, `unexpected core size ${core.size}`);
   await stat(new URL('../public/emulatorjs/data/loader.js', import.meta.url));
+});
+
+test('freely distributable FBNeo smoke game is pinned and credited', async () => {
+  const fixture = await readFile(new URL('../public/demo/cps1frog.zip', import.meta.url));
+  assert.equal(createHash('sha256').update(fixture).digest('hex'), 'd1b07899f946336768ed68ff734e1b843a1083608887c20e2456bbb0a91916bf');
+  const notice = await readFile(new URL('../public/demo/NOTICE.md', import.meta.url), 'utf8');
+  assert.match(notice, /Copyright 2006 Charles Doty/);
+  assert.match(html, /Use free test game/);
 });
 
 test('room snapshots explicitly strip sensitive tokens', () => {

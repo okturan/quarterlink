@@ -8,6 +8,7 @@
 		"start": "wrangler dev",
 		"cf-typegen": "wrangler types",
 		"check": "npm run cf-typegen && tsc --noEmit && wrangler deploy --dry-run",
+		"smoke:prod": "node scripts/smoke-production.mjs",
 		"test": "node --test tests/*.test.mjs"
 	},
 	"devDependencies": {

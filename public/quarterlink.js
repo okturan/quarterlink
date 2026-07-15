@@ -3,7 +3,7 @@ const views = [...document.querySelectorAll('.view')];
 const state = {
   roomId: null, role: null, inviteSecret: null, ws: null, pc: null,
   control: null, input: null, peerConnected: false, controllerReady: false,
-  gameReady: false, guestReady: false, guestDeviceReady: false, romFile: null, biosFile: null, pingSeq: 0, pings: new Map(),
+  gameReady: false, gameTitle: 'Metal Slug 2', guestReady: false, guestDeviceReady: false, romFile: null, biosFile: null, pingSeq: 0, pings: new Map(),
   rtts: [], jitter: 0, packetCount: 0, emulatorLoaded: false, streamStarted: false,
   pendingIce: [], relayAvailable: false, mediaReady: false, receivedTracks: new Set(), reconnectAttempts: 0, peerCreating: null,
 };
@@ -295,15 +295,25 @@ function updateReady() {
   } else {
     const ready = state.controllerReady && state.gameReady && state.peerConnected && state.guestDeviceReady && state.guestReady;
     button.disabled = !ready;
-    button.textContent = ready ? 'Start Metal Slug 2 →' : !state.gameReady ? 'Choose both game files' : !state.peerConnected ? 'Waiting for your friend' : !state.guestDeviceReady ? 'Player two needs a controller or keyboard' : !state.guestReady ? 'Waiting for player two to ready up' : 'Connect a controller';
+    button.textContent = ready ? `Start ${state.gameTitle} →` : !state.gameReady ? 'Choose both game files' : !state.peerConnected ? 'Waiting for your friend' : !state.guestDeviceReady ? 'Player two needs a controller or keyboard' : !state.guestReady ? 'Waiting for player two to ready up' : 'Connect a controller';
   }
 }
 
 async function handleFiles(files) {
   const entries = [...files]; const rom = entries.find((f) => f.name.toLowerCase() === 'mslug2.zip'); const bios = entries.find((f) => f.name.toLowerCase() === 'neogeo.zip');
   if (!rom || !bios) { toast('Choose both mslug2.zip and neogeo.zip'); return; }
-  state.romFile = rom; state.biosFile = bios; state.gameReady = true;
+  state.romFile = rom; state.biosFile = bios; state.gameTitle = 'Metal Slug 2'; state.gameReady = true;
   setCheck('#check-game', true, 'Files selected'); $('#file-picker p').textContent = 'Files selected. Compatibility is checked when the arcade starts.'; updateReady();
+}
+
+async function loadDemo() {
+  const response = await fetch('/demo/cps1frog.zip');
+  if (!response.ok) throw new Error('The free test game could not be loaded.');
+  state.romFile = new File([await response.blob()], 'cps1frog.zip', { type: 'application/zip' });
+  state.biosFile = null; state.gameTitle = 'Frog Feast'; state.gameReady = true;
+  setCheck('#check-game', true, 'Frog Feast ready');
+  $('#file-picker p').textContent = 'Free two-player test game selected. No BIOS is required.';
+  updateReady();
 }
 
 async function startGame() {
@@ -328,7 +338,8 @@ async function startGame() {
 function loadEmulator() {
   return new Promise((resolve, reject) => {
     window.EJS_player = '#emulator-player'; window.EJS_gameName = state.romFile.name; window.EJS_gameUrl = state.romFile;
-    window.EJS_biosUrl = state.biosFile; window.EJS_core = 'fbneo'; window.EJS_pathtodata = '/emulatorjs/data/';
+    if (state.biosFile) window.EJS_biosUrl = state.biosFile; else delete window.EJS_biosUrl;
+    window.EJS_core = 'fbneo'; window.EJS_pathtodata = '/emulatorjs/data/';
     window.EJS_startOnLoaded = true; window.EJS_color = '#ffb547'; window.EJS_language = 'en-US';
     window.EJS_onGameStart = () => { state.emulatorLoaded = true; $('#game-placeholder').classList.add('hidden'); resolve(); };
     const script = document.createElement('script'); script.src = '/emulatorjs/data/loader.js'; script.onerror = () => reject(new Error('Emulator failed to load')); document.body.append(script);
@@ -444,6 +455,7 @@ document.addEventListener('click', (event) => {
   if (action === 'create-room') createRoom();
   if (action === 'join-room') joinRoom();
   if (action === 'copy-invite') copyInvite();
+  if (action === 'load-demo') loadDemo().catch((error) => toast(error.message));
   if (action === 'start-game') startGame().catch((error) => { toast(error.message); show('room'); });
   if (action === 'enable-media') enableMedia().catch(() => toast('Sound is still blocked. Check the browser site controls.'));
   if (action === 'fullscreen') $('#game').requestFullscreen?.();

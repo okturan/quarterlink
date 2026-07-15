@@ -3,7 +3,7 @@ import { readFile, stat } from 'node:fs/promises';
 import test from 'node:test';
 
 const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
-const client = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+const client = await readFile(new URL('../public/quarterlink.js', import.meta.url), 'utf8');
 const worker = await readFile(new URL('../src/index.ts', import.meta.url), 'utf8');
 
 test('critical product views and controls are present', () => {

@@ -9,6 +9,7 @@ const state = {
   pendingIce: [], relayAvailable: false, mediaReady: false, receivedTracks: new Set(), reconnectAttempts: 0, peerCreating: null,
   sourceSelection: 0, creating: false, joining: false, confirmAction: null,
 };
+let emulatorBootPromise = null;
 
 function show(id) {
   views.forEach((view) => view.classList.toggle('hidden', view.id !== id));
@@ -51,7 +52,17 @@ async function createRoom() {
   const input = $('#host-name'); const name = input.value.trim();
   $('#setup-error').textContent = '';
   if (!state.gameReady) { $('#setup-error').textContent = 'Choose your game files or the free test game first.'; return; }
-  if (state.mode === 'solo') { await startSolo(); return; }
+  if (state.mode === 'solo') {
+    if (state.creating) return;
+    state.creating = true; const button = $('#create-room-button'); button.disabled = true; button.textContent = 'Opening the arcade…';
+    try { await startSolo(); }
+    catch (error) {
+      state.role = null; state.roomId = null; state.emulatorLoaded = false;
+      $('#setup-error').textContent = `The game could not start: ${error.message}`;
+      show('setup'); toast('The game could not start. Your selected files are still here.');
+    } finally { state.creating = false; syncSetupButton(); }
+    return;
+  }
   if (!name) { $('#setup-error').textContent = 'Enter a display name.'; input.focus(); return; }
   if (state.creating) return;
   state.creating = true; const button = $('#create-room-button'); button.disabled = true; button.textContent = 'Creating private room…';
@@ -436,15 +447,48 @@ async function startSolo() {
 }
 
 function loadEmulator() {
-  return new Promise((resolve, reject) => {
+  if (state.emulatorLoaded) return Promise.resolve();
+  if (emulatorBootPromise) return emulatorBootPromise;
+
+  emulatorBootPromise = new Promise((resolve, reject) => {
+    let settled = false; let failurePoll; let timeout;
+    const onPolicyViolation = (event) => {
+      const directive = event.effectiveDirective || event.violatedDirective || '';
+      if (event.blockedURI?.startsWith('blob:') && /^(script-src|worker-src)/.test(directive)) {
+        finish(new Error('The browser security policy blocked the emulator runtime.'));
+      }
+    };
+    const finish = (error) => {
+      if (settled) return;
+      settled = true; clearInterval(failurePoll); clearTimeout(timeout);
+      document.removeEventListener('securitypolicyviolation', onPolicyViolation);
+      delete window.EJS_ready; delete window.EJS_onGameStart;
+      if (error) { state.emulatorLoaded = false; reject(error); }
+      else { state.emulatorLoaded = true; $('#game-placeholder').classList.add('hidden'); resolve(); }
+    };
+
+    document.addEventListener('securitypolicyviolation', onPolicyViolation);
+
     window.EJS_player = '#emulator-player'; window.EJS_gameName = state.romFile.name; window.EJS_gameUrl = state.romFile;
     if (state.biosFile) window.EJS_biosUrl = state.biosFile; else delete window.EJS_biosUrl;
     window.EJS_core = 'fbneo'; window.EJS_pathtodata = '/emulatorjs/data/';
-    window.EJS_startOnLoaded = true; window.EJS_color = '#ffb547'; window.EJS_language = 'en-US';
-    window.EJS_onGameStart = () => { state.emulatorLoaded = true; $('#game-placeholder').classList.add('hidden'); resolve(); };
-    const script = document.createElement('script'); script.src = '/emulatorjs/data/loader.js'; script.onerror = () => reject(new Error('Emulator failed to load')); document.body.append(script);
-    setTimeout(() => state.emulatorLoaded ? resolve() : reject(new Error('The arcade took too long to start.')), 30000);
-  });
+    window.EJS_startOnLoaded = true; window.EJS_color = '#315cf5'; window.EJS_language = 'en-US';
+    window.EJS_ready = () => { $('#loading-note').textContent = 'Arcade core ready. Starting the game…'; };
+    window.EJS_onGameStart = () => finish();
+    const script = document.createElement('script'); script.src = '/emulatorjs/data/loader.js'; script.dataset.quarterlinkLoader = 'true';
+    script.onerror = () => finish(new Error('The emulator frontend could not be loaded.'));
+    script.onload = () => {
+      failurePoll = setInterval(() => {
+        if (!window.EJS_emulator?.failedToStart) return;
+        const detail = $('#emulator-player .ejs_error_text')?.textContent?.trim();
+        finish(new Error(detail || 'The emulator could not start this game.'));
+      }, 100);
+    };
+    document.body.append(script);
+    timeout = setTimeout(() => finish(new Error('The arcade took too long to start. Check the connection and try again.')), 30000);
+  }).finally(() => { emulatorBootPromise = null; });
+
+  return emulatorBootPromise;
 }
 
 async function maybeAttachStream(renegotiate = false) {

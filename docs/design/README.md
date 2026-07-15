@@ -1,15 +1,14 @@
 # QuarterLink visual direction
 
-These boards were generated with the built-in GPT image-generation workflow before the July 2026 interface rebuild:
+The authoritative July 2026 direction is [`quarterlink-light-product-direction.png`](quarterlink-light-product-direction.png). It was generated with the built-in GPT image-generation workflow after the first dark lounge exploration was rejected during review.
 
-- `quarterlink-desktop-direction.png` — landing, friend setup, join, readiness, loading/sound, gameplay, diagnostics, and reconnect direction.
-- `quarterlink-mobile-states.png` — responsive landing/setup/join/lobby plus controller, error, toast, diagnostics, and recovery states.
+The earlier `quarterlink-desktop-direction.png` and `quarterlink-mobile-states.png` boards remain only as design-history artifacts. They are not the current visual specification.
 
-They are design references, not production screenshots. The implemented interface uses semantic HTML and CSS rather than embedding the board imagery.
+These are direction boards, not production screenshots. The application implements the system with semantic HTML and CSS rather than embedding the generated artwork.
 
-## Direction prompt
+## Current direction prompt
 
-Reimagine QuarterLink as a sophisticated late-night social arcade lounge: graphite and ink surfaces, warm phosphor amber primary actions, electric mint readiness, restrained berry recovery/error states, creamy editorial typography, tactile hardware-inspired details, and CRT texture only inside game imagery. Avoid generic cyberpunk neon, pixel-font overload, glassmorphism, fake devices, fabricated location or latency, and copyrighted game artwork. Cover the complete desktop and responsive flow, including setup, join, readiness, sound activation, gameplay, diagnostics, controller testing, errors, toasts, and reconnect recovery.
+Create a complete, shippable light product interface for QuarterLink across landing, solo source selection, friend-room creation, invite join, two-seat lobby, loading, browser sound activation, gameplay, controller testing, diagnostics, reconnect recovery, end-session confirmation, toast, and responsive mobile states. Use warm off-white pages, crisp white cards, charcoal/slate type, one restrained cobalt action color, soft sage success, muted coral errors, hairline borders, subtle shadows, generous spacing, and mature product typography. Avoid dark themes, neon, glow, cyberpunk, CRT styling, pixel fonts, arcade-cabinet illustration, glassmorphism, fake devices, fabricated measurements, or copyrighted game art.
 
 ## Product truths carried into the implementation
 
@@ -18,3 +17,4 @@ Reimagine QuarterLink as a sophisticated late-night social arcade lounge: graphi
 - ROM and BIOS files remain on the host device.
 - Metal Slug 2 is not bundled; Frog Feast is the credited free test game.
 - Direct versus relay and round-trip time appear only after WebRTC measurement.
+- The UI does not claim that temporary room coordination data is never stored.

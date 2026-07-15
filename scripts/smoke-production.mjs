@@ -10,6 +10,10 @@ for (const route of ['/', '/join/smoke', '/room/smoke']) {
   assert.match(await response.text(), /<script src="\/quarterlink-v3\.js" type="module"><\/script>/);
 }
 
+const plainRoot = await fetch(`${base}/?plain=${Date.now()}`, { headers: { accept: '*/*' }, redirect: 'manual' });
+assert.equal(plainRoot.status, 200, `plain root returned ${plainRoot.status}`);
+assert.match(await plainRoot.text(), /<script src="\/quarterlink-v3\.js" type="module"><\/script>/);
+
 const create = await fetch(`${base}/api/rooms`, {
   method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Production smoke host' }),
 });

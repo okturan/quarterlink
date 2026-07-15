@@ -54,7 +54,7 @@ Each room has its own SQLite-backed Durable Object, two seats, a 2-hour TTL, a h
 ## Security and privacy
 
 - `COOP`, `COEP`, and `CORP` enable an isolated Wasm runtime.
-- Strict CSP, no third-party scripts, no analytics, and no ROM uploads.
+- A same-origin CSP blocks third-party scripts and network fallbacks; the pinned legacy Emscripten core is explicitly allowed its required `unsafe-eval` and in-memory `blob:` script, worker, and Wasm fetch paths. There is no analytics or ROM upload path.
 - Cryptographic room IDs, sessions, and invite secrets.
 - Signaling messages are allowlisted and bounded to 64 KiB.
 - Durable Object WebSocket hibernation avoids always-on coordination instances.
@@ -62,7 +62,7 @@ Each room has its own SQLite-backed Durable Object, two seats, a 2-hour TTL, a h
 
 ## Runtime licensing
 
-The browser runtime vendors EmulatorJS 4.2.3 under GPL-3.0 and its FBNeo WebAssembly core. See [`public/vendor-licenses`](public/vendor-licenses). FBNeo is non-commercial software; QuarterLink must remain non-commercial unless a separate license is obtained. Game ROMs and BIOS files are not included.
+The browser runtime vendors EmulatorJS 4.2.3 under GPL-3.0 and both non-threaded FBNeo WebAssembly variants from the pinned `@emulatorjs/core-fbneo@4.2.3` package. Static tests verify their exact sizes and SHA-256 hashes so the runtime cannot silently drift to a CDN fallback. See [`public/vendor-licenses`](public/vendor-licenses). FBNeo is non-commercial software; QuarterLink must remain non-commercial unless a separate license is obtained. Commercial game ROMs and BIOS files are not included; the bundled Frog Feast test game is homebrew and documented in [`public/demo/NOTICE.md`](public/demo/NOTICE.md).
 
 ## Known production gates
 

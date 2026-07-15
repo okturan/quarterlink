@@ -20,9 +20,20 @@ test('all runtime scripts are same-origin', () => {
 });
 
 test('pinned FBNeo runtime assets are vendored', async () => {
-  const core = await stat(new URL('../public/emulatorjs/data/cores/fbneo-wasm.data', import.meta.url));
-  assert.ok(core.size > 8_000_000, `unexpected core size ${core.size}`);
-  await stat(new URL('../public/emulatorjs/data/loader.js', import.meta.url));
+  const cores = [
+    ['fbneo-wasm.data', 8_273_551, '315a25e0bcd61d58ee0d9e8b1dbf3740b9e0ca4b7d0726f848ce1068de73437c'],
+    ['fbneo-legacy-wasm.data', 8_272_960, '9dbb6242c028f4179549f324688b654353881beb552292f939bc6171a0828b5f'],
+  ];
+  for (const [name, expectedSize, expectedHash] of cores) {
+    const core = await readFile(new URL(`../public/emulatorjs/data/cores/${name}`, import.meta.url));
+    assert.equal(core.byteLength, expectedSize, `unexpected ${name} size`);
+    assert.equal(createHash('sha256').update(core).digest('hex'), expectedHash, `unexpected ${name} hash`);
+  }
+  const report = await readFile(new URL('../public/emulatorjs/data/cores/reports/fbneo.json', import.meta.url));
+  assert.equal(createHash('sha256').update(report).digest('hex'), 'd2c5e07c2afc2b53937f14b721d7d025ad599d111e9627fc77e9b3fd17450e70');
+  for (const path of ['loader.js', 'emulator.min.js', 'emulator.min.css']) {
+    await stat(new URL(`../public/emulatorjs/data/${path}`, import.meta.url));
+  }
 });
 
 test('freely distributable FBNeo smoke game is pinned and credited', async () => {
@@ -64,6 +75,9 @@ test('room recovery, relay credentials, and websocket origin checks are wired', 
   assert.match(client, /showConnectionOverlay\('failed'\)/);
   assert.match(client, /now - started > 10000/);
   assert.match(worker, /cache-control.*no-store/);
+  assert.match(worker, /script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob:/);
+  assert.doesNotMatch(worker, /script-src[^;]*'unsafe-inline'/);
+  assert.match(worker, /connect-src 'self' blob: wss: ws:/);
 });
 
 test('join UI asks for the complete private link, not a fake join code', () => {
@@ -71,7 +85,8 @@ test('join UI asks for the complete private link, not a fake join code', () => {
   assert.match(html, /Paste the complete link/);
   assert.doesNotMatch(html, /Join with code|Invite link or room code/);
   assert.doesNotMatch(html, /18 ms|Ready in Tirana|Direct encrypted connection/);
-  assert.match(html, /Encrypted WebRTC link/);
+  assert.match(html, /Encrypted connection/);
+  assert.match(html, /Friend sessions use WebRTC/);
 });
 
 test('redesigned shell preserves every client-bound DOM id and nested contract', () => {
@@ -94,7 +109,16 @@ test('solo is a first-class local flow with no room requirement', () => {
   assert.doesNotMatch(soloBody, /api\(|createPeer\(|connectSignaling\(|maybeAttachStream\(|signal\(/);
 });
 
+test('emulator boot reports internal failures instead of hanging silently', () => {
+  assert.match(client, /window\.EJS_ready/);
+  assert.match(client, /EJS_emulator\?\.failedToStart/);
+  assert.match(client, /emulatorBootPromise/);
+  assert.match(client, /The game could not start: \$\{error\.message\}/);
+});
+
 test('versioned application shell cannot enter Cloudflare HTML redirect normalization', () => {
   assert.match(worker, /quarterlink-shell-v3\.html/);
+  assert.match(worker, /url\.pathname === "\/"/);
+  assert.doesNotMatch(worker, /headers\.get\("accept"\).*text\/html/);
   assert.match(wrangler, /"html_handling": "none"/);
 });

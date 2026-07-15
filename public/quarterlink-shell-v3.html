@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#090a0c">
+  <meta name="theme-color" content="#f7f6f2">
   <meta name="description" content="Play a local arcade game solo or invite a friend with one private link.">
   <meta property="og:title" content="QuarterLink — Your couch has a second seat">
   <meta property="og:description" content="A private browser arcade for one or two players. No install and no account for your friend.">
@@ -15,38 +15,39 @@
   <link rel="stylesheet" href="/game-v3.css">
 </head>
 <body>
-  <div class="ambient" aria-hidden="true"><span></span><span></span><span></span></div>
+  <div class="ambient" aria-hidden="true"></div>
   <header class="site-header">
     <a class="brand" href="/" aria-label="QuarterLink home"><span class="coin" aria-hidden="true">Q</span><span>QuarterLink</span></a>
-    <p class="header-promise"><span aria-hidden="true">●</span> Private rooms · WebRTC encrypted</p>
+    <p class="header-promise"><span aria-hidden="true">✓</span> No account · No install · Private by design</p>
   </header>
 
   <main id="app">
     <section id="landing" class="view landing" aria-labelledby="landing-title">
       <div class="hero-copy">
-        <p class="kicker">A PRIVATE BROWSER ARCADE</p>
-        <h1 id="landing-title" tabindex="-1">Your couch has<br><em>a second seat.</em></h1>
-        <p class="lede">Play a local arcade game solo or with a friend online. You run the game in Chrome or Edge; your friend joins from one private link.</p>
-        <div class="hero-actions">
-          <button class="button primary large" data-action="open-host"><span class="button-icon" aria-hidden="true">↗</span> Play with a friend</button>
-          <button class="button secondary large" data-action="open-solo"><span class="button-icon" aria-hidden="true">▶</span> Play solo</button>
-          <button class="text-button" data-action="open-join">I have an invite link <span aria-hidden="true">→</span></button>
+        <p class="kicker">PLAY TOGETHER, FROM ANYWHERE</p>
+        <h1 id="landing-title" tabindex="-1">Play classic games<br>together in your browser.</h1>
+        <p class="lede">Use your legally obtained game files locally, or try the free homebrew demo. Invite a friend with one private link—no account or installation required.</p>
+        <div class="mode-cards">
+          <article class="mode-card">
+            <span class="mode-icon friends" aria-hidden="true">↗</span>
+            <h2>Play with a friend</h2>
+            <p>Create a private room and play together over an encrypted connection.</p>
+            <button class="button primary full" data-action="open-host">Create a room</button>
+          </article>
+          <article class="mode-card">
+            <span class="mode-icon solo" aria-hidden="true">▶</span>
+            <h2>Play solo</h2>
+            <p>Run the game entirely in this browser. No room or network connection.</p>
+            <button class="button secondary full" data-action="open-solo">Play solo</button>
+          </article>
         </div>
+        <button class="text-button invite-link" data-action="open-join">I have a private invite link <span aria-hidden="true">→</span></button>
         <ul class="hero-facts" aria-label="Requirements">
-          <li>No account</li><li>No install</li><li>Files stay local</li>
+          <li><span aria-hidden="true">♙</span><b>No account needed</b><small>Join with one private link.</small></li>
+          <li><span aria-hidden="true">▣</span><b>Your files stay local</b><small>They never upload to QuarterLink.</small></li>
+          <li><span aria-hidden="true">⌁</span><b>Encrypted connection</b><small>Friend sessions use WebRTC.</small></li>
         </ul>
-      </div>
-
-      <div class="lounge-card" aria-label="QuarterLink private arcade preview">
-        <div class="lounge-art" aria-hidden="true">
-          <div class="lamp"><i></i></div><div class="couch"><i></i><i></i></div><div class="table"><i></i></div><div class="cabinet"><b>Q</b></div>
-        </div>
-        <div class="lounge-overlay">
-          <div class="seat-preview"><span class="player-token p1">P1</span><div><strong>Your game</strong><small>Runs here in the browser</small></div></div>
-          <div class="link-preview"><span></span><b>Encrypted WebRTC link</b><span></span></div>
-          <div class="seat-preview"><span class="player-token p2">P2</span><div><strong>Your friend</strong><small>One private link away</small></div></div>
-        </div>
-        <div class="now-playing"><span class="game-cover" aria-hidden="true">Q</span><div><small>TONIGHT'S RUN</small><strong data-game-title>Metal Slug 2</strong></div><b>1–2P</b></div>
+        <p class="landing-footnote">Free to use. Built for playing together.</p>
       </div>
     </section>
 
@@ -81,7 +82,7 @@
         <div class="flow-heading centered"><span class="heading-icon berry" aria-hidden="true">↗</span><div><p class="kicker berry-text">YOUR SEAT IS WAITING</p><h1 id="join-title" tabindex="-1">Join your friend.</h1><p>Private room · Encrypted connection · No account</p></div></div>
         <label class="field"><span>Display name</span><small>Your friend will see this in the lobby.</small><input id="guest-name" maxlength="24" autocomplete="nickname" placeholder="Player 2" required></label>
         <label id="code-field" class="field hidden"><span>Private invite link</span><small>Paste the complete link, including everything after #.</small><input id="room-code" autocomplete="off" inputmode="url" placeholder="https://quarterlink…/join/…#…"></label>
-        <button id="join-room-button" class="button berry full large" type="submit" data-action="join-room">Join room <span aria-hidden="true">→</span></button>
+        <button id="join-room-button" class="button primary full large" type="submit" data-action="join-room">Join room <span aria-hidden="true">→</span></button>
         <div id="join-error-card" class="error-card hidden" role="alert"><span aria-hidden="true">!</span><div><strong>Invite unavailable</strong><p id="join-error"></p></div></div>
         <p class="mobile-note">For gameplay, use desktop Chrome or Edge with a keyboard or controller.</p>
       </form>

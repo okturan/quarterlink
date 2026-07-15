@@ -28,7 +28,7 @@ function securityHeaders(response: Response): Response {
 	headers.set("Referrer-Policy", "no-referrer");
 	headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
 	if (headers.get("content-type")?.includes("text/html")) headers.set("Cache-Control", "no-store");
-	headers.set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' wss: ws:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
+	headers.set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' blob: wss: ws:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
 	return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
@@ -322,7 +322,7 @@ export default {
 		try {
 			let response: Response;
 			if (url.pathname.startsWith("/api/")) response = await api(request, env, url);
-			else if (request.method === "GET" && request.headers.get("accept")?.includes("text/html")) {
+			else if (request.method === "GET" && (url.pathname === "/" || url.pathname.startsWith("/join/") || url.pathname.startsWith("/room/"))) {
 				const shellUrl = new URL("/quarterlink-shell-v3.html", url.origin);
 				response = await env.ASSETS.fetch(new Request(shellUrl, request));
 			} else response = await env.ASSETS.fetch(request);

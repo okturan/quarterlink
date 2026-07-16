@@ -29,7 +29,7 @@ The July 2026 product redesign began from GPT-generated desktop and mobile direc
 ## Run locally
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
@@ -39,6 +39,7 @@ Open `http://localhost:8787` in current Chrome or Edge. Create a room, select bo
 
 ```bash
 npm test
+npm audit --audit-level=high
 npm run check
 npm run smoke:prod
 ```

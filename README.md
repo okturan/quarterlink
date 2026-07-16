@@ -2,6 +2,8 @@
 
 **Your couch has a second seat.** QuarterLink is a zero-install browser arcade for solo play or a private two-player session. A host can play locally, or open a room, share a single-use link, load local arcade files, and play with a friend over encrypted WebRTC.
 
+**[Open the live app](https://quarterlink.okan.workers.dev/)** · **[CI](https://github.com/okturan/quarterlink/actions/workflows/ci.yml)**
+
 ## Current playable path
 
 - Solo mode runs the selected game entirely in the local browser without creating a room or network connection.

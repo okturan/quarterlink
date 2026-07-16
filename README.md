@@ -4,6 +4,8 @@
 
 **[Open the live app](https://quarterlink.okan.workers.dev/)** · **[CI](https://github.com/okturan/quarterlink/actions/workflows/ci.yml)**
 
+[![QuarterLink landing page with private-room and solo-play choices](docs/screenshots/landing-desktop.png)](https://quarterlink.okan.workers.dev/)
+
 ## Current playable path
 
 - Solo mode runs the selected game entirely in the local browser without creating a room or network connection.
@@ -17,6 +19,10 @@
 The host supplies `mslug2.zip` and `neogeo.zip` in the room. Files remain local and are never uploaded. QuarterLink does not contain or distribute game ROMs.
 
 For hardware and connection testing without proprietary files, the room also offers Frog Feast, a freely distributable two-player CPS-1 homebrew game. Its source, transformation, hashes, and permission notice are recorded in [`public/demo/NOTICE.md`](public/demo/NOTICE.md).
+
+![Frog Feast running locally in QuarterLink's browser arcade](docs/screenshots/game-desktop.png)
+
+Both screenshots are captured from the deployed app; the game view uses the documented, freely distributable Frog Feast fixture.
 
 The July 2026 product redesign began from GPT-generated desktop and mobile direction boards. The saved references and design rationale are in [`docs/design`](docs/design).
 

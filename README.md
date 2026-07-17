@@ -24,6 +24,10 @@ For hardware and connection testing without proprietary files, the room also off
 
 Both screenshots are captured from the deployed app; the game view uses the documented, freely distributable Frog Feast fixture.
 
+![Connected QuarterLink guest session showing direct peer-to-peer transport and live RTT and jitter telemetry](docs/screenshots/connected-peer-desktop.png)
+
+The connected-session capture verifies the production invitation, signaling, seat assignment, direct WebRTC transport, and guest video path across two isolated browser contexts. Both peers ran on the same machine for this deterministic proof, so the displayed `0 ms` RTT is expected and is not presented as evidence of internet latency or two-network compatibility.
+
 The July 2026 product redesign began from GPT-generated desktop and mobile direction boards. The saved references and design rationale are in [`docs/design`](docs/design).
 
 ## Run locally
@@ -61,6 +65,8 @@ Host browser ─── WebRTC video + input ─── Guest browser
 Each room has its own SQLite-backed Durable Object, two seats, a 2-hour TTL, a hashed single-use invite, and HttpOnly room-scoped sessions. Invite secrets are placed in the URL fragment so browsers do not include them in HTTP requests, referrers, or server logs.
 
 ## Security and privacy
+
+Security reports are accepted privately through [GitHub Security Advisories](https://github.com/okturan/quarterlink/security/advisories/new); see [`SECURITY.md`](SECURITY.md) for scope and reporting guidance.
 
 - `COOP`, `COEP`, and `CORP` enable an isolated Wasm runtime.
 - A same-origin CSP blocks third-party scripts and network fallbacks; the pinned legacy Emscripten core is explicitly allowed its required `unsafe-eval` and in-memory `blob:` script, worker, and Wasm fetch paths. There is no analytics or ROM upload path.

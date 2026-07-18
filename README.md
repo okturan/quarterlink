@@ -79,6 +79,13 @@ Security reports are accepted privately through [GitHub Security Advisories](htt
 
 The browser runtime vendors EmulatorJS 4.2.3 under GPL-3.0 and both non-threaded FBNeo WebAssembly variants from the pinned `@emulatorjs/core-fbneo@4.2.3` package. Static tests verify their exact sizes and SHA-256 hashes so the runtime cannot silently drift to a CDN fallback. See [`public/vendor-licenses`](public/vendor-licenses). FBNeo is non-commercial software; QuarterLink must remain non-commercial unless a separate license is obtained. Commercial game ROMs and BIOS files are not included; the bundled Frog Feast test game is homebrew and documented in [`public/demo/NOTICE.md`](public/demo/NOTICE.md).
 
+The root [MIT License](./LICENSE) covers only original owner-authored
+QuarterLink code, documentation, and modifications. It does not cover
+`public/emulatorjs/**`, `public/vendor-licenses/**`, or anything under
+`public/demo/**`, including the bundled game payload and
+`public/demo/NOTICE.md`. Those materials retain their existing GPL,
+non-commercial, copyright, permission, and notice terms.
+
 ## Known production gates
 
 - TURN credentials are not configured on the public deployment yet, so symmetric NAT/corporate networks may fail instead of relaying. The application is relay-ready and falls back to Cloudflare STUN when secrets are absent.

@@ -16,5 +16,8 @@
 		"@types/node": "^26.1.2",
 		"typescript": "^7.0.2",
 		"wrangler": "^4.115.0"
+	},
+	"overrides": {
+		"undici": "7.29.0"
 	}
 }

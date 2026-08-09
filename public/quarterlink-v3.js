@@ -4,11 +4,13 @@ const state = {
   mode: 'friends',
   roomId: null, role: null, inviteSecret: null, ws: null, pc: null,
   control: null, input: null, peerConnected: false, controllerReady: false,
-  gameReady: false, gameTitle: 'Metal Slug 2', guestReady: false, guestDeviceReady: false, romFile: null, biosFile: null, pingSeq: 0, pings: new Map(),
+  gameReady: false, gameTitle: 'No game selected', guestReady: false, guestDeviceReady: false,
+  romFile: null, biosFile: null, emulatorCore: null, biosMountPath: null, pingSeq: 0, pings: new Map(),
   rtts: [], jitter: 0, packetCount: 0, emulatorLoaded: false, streamStarted: false,
   pendingIce: [], relayAvailable: false, mediaReady: false, receivedTracks: new Set(), reconnectAttempts: 0, peerCreating: null,
-  sourceSelection: 0, creating: false, joining: false, confirmAction: null,
+  sourceSelection: 0, creating: false, joining: false, confirmAction: null, wsRetries: 0,
 };
+let wsKeepalive = null;
 let emulatorBootPromise = null;
 
 function show(id) {
@@ -16,8 +18,16 @@ function show(id) {
   document.body.classList.toggle('playing', id === 'game');
   window.scrollTo({ top: 0, behavior: 'instant' });
   const title = $(`#${id} h1, #${id} [tabindex="-1"]`);
-  if (title) requestAnimationFrame(() => title.focus({ preventScroll: true }));
+  // EmulatorJS only receives keyboard input while its container is focused,
+  // so the game view must hand focus to the emulator, not the heading.
+  const focusTarget = (id === 'game' && window.EJS_emulator?.elements?.parent) || title;
+  if (focusTarget) requestAnimationFrame(() => focusTarget.focus({ preventScroll: true }));
   document.title = id === 'landing' ? 'QuarterLink — Your couch has a second seat' : `${title?.textContent?.trim() || 'QuarterLink'} — QuarterLink`;
+}
+
+function focusGameSurface() {
+  const parent = window.EJS_emulator?.elements?.parent;
+  if (parent && !$('#game').classList.contains('hidden')) parent.focus({ preventScroll: true });
 }
 
 function toast(message) {
@@ -119,8 +129,12 @@ async function enterRoom() {
   state.mode = 'friends';
   $('#host-display').textContent = host?.name || 'Host';
   $('#room-code-display').textContent = state.roomId.slice(0, 4).toUpperCase() + '-' + state.roomId.slice(4, 7).toUpperCase();
-  $('#invite-box').classList.toggle('hidden', state.role !== 'host');
   $('#file-picker').classList.toggle('hidden', state.role !== 'host');
+  $('#host-seat .player-card-head small').textContent = state.role === 'host' ? 'You · Host' : 'Your friend · Host';
+  $('#host-seat .control-tester').classList.toggle('hidden', state.role !== 'host');
+  $('#guest-seat .control-tester').classList.toggle('hidden', state.role !== 'guest');
+  $('#check-controller strong').textContent = state.role === 'guest' ? 'Your controls (Player 2)' : 'Player 1 controls';
+  $('#check-network strong').textContent = state.role === 'guest' ? 'Connection to the host' : 'Player 2 connection';
   updateGuest(guest?.name);
   if (state.role === 'host' && !guest) {
     state.inviteSecret = sessionStorage.getItem(`quarterlink.invite.${state.roomId}`);
@@ -137,10 +151,12 @@ function updateGuest(name) {
   const node = $('#guest-seat');
   node.classList.toggle('empty', !name); node.classList.toggle('occupied', Boolean(name));
   node.querySelector('strong').textContent = name || 'Waiting for your friend';
-  node.querySelector('small').textContent = name ? 'Player 2 · Seat claimed' : 'Send the private invite link';
+  node.querySelector('small').textContent = name ? (state.role === 'guest' ? 'You · Player 2' : 'Player 2 · Seat claimed') : 'Send the private invite link';
   node.querySelector('.seat-status').textContent = name ? 'Joined' : 'Empty';
   $('#seat-count').textContent = name ? '2 of 2 seats filled' : '1 of 2 seats filled';
   $('#reset-seat').classList.toggle('hidden', !name || state.role !== 'host');
+  $('#invite-box').classList.toggle('hidden', state.role !== 'host' || Boolean(name));
+  updateReady();
 }
 
 function connectSignaling() {
@@ -148,37 +164,53 @@ function connectSignaling() {
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const ws = new WebSocket(`${protocol}//${location.host}/api/rooms/${state.roomId}/ws`);
   state.ws = ws;
-  ws.onopen = () => { $('#room-state').textContent = 'Room online'; $('#room-state').className = 'pill green'; };
+  ws.onopen = () => {
+    state.wsRetries = 0;
+    $('#room-state').textContent = 'Room online'; $('#room-state').className = 'pill green';
+    clearInterval(wsKeepalive);
+    wsKeepalive = setInterval(() => { if (ws.readyState === WebSocket.OPEN) ws.send('{"type":"ws.ping"}'); }, 30000);
+  };
   ws.onmessage = async (event) => {
-    const message = JSON.parse(event.data);
-    if (message.type === 'room.snapshot') {
-      updateGuest(message.room.peers.guest?.name);
-      if (message.room.peers.guest && !state.pc) await createPeer();
-    } else if (message.type === 'peer.joined') {
-      updateGuest(message.name); if (!state.pc) await createPeer();
-    } else if (message.type === 'peer.connected') {
-      if (!state.pc) await createPeer();
-      if (state.role === 'host' && state.pc?.localDescription?.type === 'offer') signal({ type: 'rtc.offer', description: state.pc.localDescription });
-    } else if (message.type === 'rtc.offer') {
-      if (!state.pc) await createPeer(); await state.pc.setRemoteDescription(message.description); await flushIce();
-      await state.pc.setLocalDescription(await state.pc.createAnswer()); signal({ type: 'rtc.answer', description: state.pc.localDescription });
-    } else if (message.type === 'rtc.answer') {
-      await state.pc?.setRemoteDescription(message.description); await flushIce();
-    } else if (message.type === 'rtc.ice' && message.candidate) {
-      if (state.pc?.remoteDescription) await state.pc.addIceCandidate(message.candidate);
-      else state.pendingIce.push(message.candidate);
-    } else if (message.type === 'peer.disconnected') {
-      if (state.pc?.connectionState !== 'connected') connectionLost();
-    } else if (message.type === 'room.expired') {
-      toast('This room has closed.'); setTimeout(() => location.assign('/'), 1200);
-    } else if (message.type === 'guest.removed') {
-      if (state.role === 'guest') location.assign('/');
-      else updateGuest(null);
-    }
+    try {
+      const message = JSON.parse(event.data);
+      if (message.type === 'room.snapshot') {
+        updateGuest(message.room.peers.guest?.name);
+        if (message.room.peers.guest && !state.pc) await createPeer();
+      } else if (message.type === 'peer.joined') {
+        updateGuest(message.name); if (!state.pc) await createPeer();
+      } else if (message.type === 'peer.connected') {
+        if (!state.pc) await createPeer();
+        if (state.role === 'host' && state.pc?.localDescription?.type === 'offer') signal({ type: 'rtc.offer', description: state.pc.localDescription });
+      } else if (message.type === 'rtc.offer') {
+        if (!state.pc) await createPeer(); await state.pc.setRemoteDescription(message.description); await flushIce();
+        await state.pc.setLocalDescription(await state.pc.createAnswer()); signal({ type: 'rtc.answer', description: state.pc.localDescription });
+      } else if (message.type === 'rtc.answer') {
+        if (state.pc?.signalingState === 'have-local-offer') { await state.pc.setRemoteDescription(message.description); await flushIce(); }
+      } else if (message.type === 'rtc.ice' && message.candidate) {
+        if (state.pc?.remoteDescription) await state.pc.addIceCandidate(message.candidate);
+        else state.pendingIce.push(message.candidate);
+      } else if (message.type === 'peer.disconnected') {
+        if (state.pc?.connectionState !== 'connected') connectionLost();
+      } else if (message.type === 'room.expired') {
+        toast('This room has closed.'); setTimeout(() => location.assign('/'), 1200);
+      } else if (message.type === 'guest.removed') {
+        if (state.role === 'guest') location.assign('/');
+        else updateGuest(null);
+      }
+    } catch (error) { console.warn('Signaling message failed', error); }
   };
   ws.onclose = (event) => {
+    clearInterval(wsKeepalive);
     if (event.code === 4002) { state.roomId = null; location.assign('/'); return; }
-    if (state.ws === ws && state.roomId) setTimeout(connectSignaling, 1200);
+    if (state.ws !== ws || !state.roomId) return;
+    state.wsRetries += 1;
+    if (state.wsRetries > 12) {
+      $('#room-state').textContent = 'Room offline'; $('#room-state').className = 'pill amber';
+      toast('The room connection was lost. Reload the page to reconnect.');
+      return;
+    }
+    $('#room-state').textContent = 'Reconnecting…'; $('#room-state').className = 'pill amber';
+    setTimeout(connectSignaling, Math.min(1200 * state.wsRetries, 8000));
   };
 }
 
@@ -220,6 +252,7 @@ async function createPeerInternal() {
     state.receivedTracks.add(event.track.kind); video.classList.remove('hidden');
     $('#game-placeholder').classList.add('hidden');
     video.play().then(maybeReportMediaReady).catch(() => {
+      if (!video.paused) return;
       $('#sound-gate').classList.remove('hidden');
       toast('One click is needed to enable game sound.');
     });
@@ -228,7 +261,7 @@ async function createPeerInternal() {
   if (state.role === 'host') {
     bindChannel(pc.createDataChannel('control', { ordered: true }));
     bindChannel(pc.createDataChannel('input', { ordered: false, maxRetransmits: 0 }));
-    await maybeAttachStream();
+    await maybeAttachStream().catch(() => { /* retried with renegotiation when the run starts */ });
     await pc.setLocalDescription(await pc.createOffer()); signal({ type: 'rtc.offer', description: pc.localDescription });
   }
 }
@@ -245,6 +278,10 @@ function bindChannel(channel) {
       if (msg.type === 'prepare' && state.role === 'guest') {
         if (msg.gameTitle) { state.gameTitle = msg.gameTitle; updateGamePresentation(); }
         show('loading'); $('#loading-title').textContent = `Your friend is starting ${state.gameTitle}`;
+        maybeReportMediaReady();
+      }
+      if (msg.type === 'start.failed' && state.role === 'guest') {
+        show('room'); toast('Your friend could not start the game. Stay ready — they can retry.');
       }
       if (msg.type === 'media.ready' && state.role === 'host') state.mediaReady = true;
       if (msg.type === 'start' && state.role === 'guest') beginGuestPlay();
@@ -255,7 +292,7 @@ function bindChannel(channel) {
     channel.onmessage = (event) => applyRemoteInput(JSON.parse(event.data));
   }
   channel.onopen = () => {
-    state.peerConnected = true; setCheck('#check-network', true, 'Detecting route');
+    state.peerConnected = true; setCheck('#check-network', true, 'Connected');
     if (channel.label === 'control' && state.role === 'guest') channel.send(JSON.stringify({ type: 'device.ready', ready: state.controllerReady }));
     if (channel.label === 'control') maybeReportMediaReady();
     updateReady();
@@ -352,29 +389,155 @@ function applyRemoteInput(message) {
 
 function updateReady() {
   const button = $('#play-button');
+  const help = $('#room-help');
   if (state.role === 'guest') {
     button.textContent = state.guestReady ? 'Ready · click to unready' : state.peerConnected ? "I'm ready" : 'Connecting to host';
     button.disabled = !state.peerConnected || !state.controllerReady;
     setCheck('#check-game', true, 'Host provides game');
+    help.textContent = state.guestReady ? 'You are ready — your friend starts the run.' : !state.controllerReady ? 'Press a keyboard key or controller button to test your controls.' : state.peerConnected ? "Press I'm ready when you want to play." : 'Connecting to your friend…';
   } else {
     const ready = state.controllerReady && state.gameReady && state.peerConnected && state.guestDeviceReady && state.guestReady;
     button.disabled = !ready;
     button.textContent = ready ? 'Start the run →' : !state.gameReady ? 'Choose a game source' : !state.controllerReady ? 'Test Player 1 controls' : !state.peerConnected ? 'Waiting for your friend' : !state.guestDeviceReady ? 'Player 2 needs controls' : !state.guestReady ? 'Waiting for Player 2 readiness' : 'Start the run →';
+    const seated = $('#guest-seat').classList.contains('occupied');
+    help.textContent = ready ? 'Both seats are ready. Start the run.' : !seated ? 'Copy the private invite link to bring in Player 2.' : !state.peerConnected ? 'Player 2 joined — establishing the encrypted connection…' : 'Player 2 is here. Start unlocks when every check clears.';
   }
+}
+
+function titleFromFileName(name) {
+  return name.replace(/\.(zip|sfc|smc|snes|nes|md|gen|smd|bin)$/i, '').replace(/\s+/g, ' ').trim() || name;
+}
+
+function extensionOf(name) {
+  const match = name.toLowerCase().match(/(\.[a-z0-9]+)$/);
+  return match ? match[1] : '';
+}
+
+async function listZipEntryNames(file) {
+  // Read only the tail so large arcade archives are not fully loaded at pick time.
+  const tailSize = Math.min(file.size, 256 * 1024);
+  const tail = new Uint8Array(await file.slice(file.size - tailSize).arrayBuffer());
+  let eocd = -1;
+  for (let i = tail.length - 22; i >= 0; i -= 1) {
+    if (tail[i] === 0x50 && tail[i + 1] === 0x4b && tail[i + 2] === 0x05 && tail[i + 3] === 0x06) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) return [];
+  const view = new DataView(tail.buffer, tail.byteOffset, tail.byteLength);
+  const entryCount = view.getUint16(eocd + 10, true);
+  const cdSize = view.getUint32(eocd + 12, true);
+  const cdOffset = view.getUint32(eocd + 16, true);
+  if (!entryCount || cdOffset + cdSize > file.size) return [];
+  const central = new Uint8Array(await file.slice(cdOffset, cdOffset + cdSize).arrayBuffer());
+  const names = [];
+  let offset = 0;
+  const cdView = new DataView(central.buffer, central.byteOffset, central.byteLength);
+  while (offset + 46 <= central.length && names.length < entryCount) {
+    if (cdView.getUint32(offset, true) !== 0x02014b50) break;
+    const nameLength = cdView.getUint16(offset + 28, true);
+    const extraLength = cdView.getUint16(offset + 30, true);
+    const commentLength = cdView.getUint16(offset + 32, true);
+    const start = offset + 46;
+    const end = start + nameLength;
+    if (end > central.length) break;
+    names.push(new TextDecoder().decode(central.subarray(start, end)));
+    offset = end + extraLength + commentLength;
+  }
+  return names;
+}
+
+async function detectGameSelection(files) {
+  const entries = [...files].filter(Boolean);
+  if (!entries.length) throw new Error('No files selected.');
+
+  const bios = entries.find((file) => file.name.toLowerCase() === 'neogeo.zip') || null;
+  const nonBios = entries.filter((file) => file !== bios);
+  if (bios && nonBios.length) {
+    const rom = nonBios.find((file) => extensionOf(file.name) === '.zip') || nonBios[0];
+    return {
+      romFile: rom,
+      biosFile: bios,
+      biosMountPath: '/neogeo.zip',
+      emulatorCore: 'fbneo',
+      gameTitle: titleFromFileName(rom.name),
+      status: `${titleFromFileName(rom.name)} · Neo Geo / FBNeo (BIOS attached)`,
+    };
+  }
+
+  const rom = nonBios[0] || entries[0];
+  const ext = extensionOf(rom.name);
+  if (['.sfc', '.smc', '.snes'].includes(ext)) {
+    return { romFile: rom, biosFile: null, biosMountPath: null, emulatorCore: 'snes9x', gameTitle: titleFromFileName(rom.name), status: `${titleFromFileName(rom.name)} · Super Nintendo` };
+  }
+  if (ext === '.nes') {
+    return { romFile: rom, biosFile: null, biosMountPath: null, emulatorCore: 'fceumm', gameTitle: titleFromFileName(rom.name), status: `${titleFromFileName(rom.name)} · NES` };
+  }
+  if (['.md', '.gen', '.smd'].includes(ext)) {
+    return { romFile: rom, biosFile: null, biosMountPath: null, emulatorCore: 'genesis_plus_gx', gameTitle: titleFromFileName(rom.name), status: `${titleFromFileName(rom.name)} · Genesis / Mega Drive` };
+  }
+
+  if (ext === '.zip') {
+    const names = await listZipEntryNames(rom);
+    const lower = names.map((name) => name.toLowerCase());
+    if (lower.some((name) => /\.(sfc|smc|snes)$/.test(name))) {
+      return { romFile: rom, biosFile: null, biosMountPath: null, emulatorCore: 'snes9x', gameTitle: titleFromFileName(rom.name), status: `${titleFromFileName(rom.name)} · Super Nintendo` };
+    }
+    if (lower.some((name) => name.endsWith('.nes'))) {
+      return { romFile: rom, biosFile: null, biosMountPath: null, emulatorCore: 'fceumm', gameTitle: titleFromFileName(rom.name), status: `${titleFromFileName(rom.name)} · NES` };
+    }
+    if (lower.some((name) => /\.(md|gen|smd|bin)$/.test(name)) && !lower.some((name) => name.includes('/'))) {
+      // Loose Genesis dumps are often a single .bin/.md member; arcade sets are many chips.
+      if (names.length <= 3) {
+        return { romFile: rom, biosFile: null, biosMountPath: null, emulatorCore: 'genesis_plus_gx', gameTitle: titleFromFileName(rom.name), status: `${titleFromFileName(rom.name)} · Genesis / Mega Drive` };
+      }
+    }
+    if (bios) {
+      return { romFile: rom, biosFile: bios, biosMountPath: '/neogeo.zip', emulatorCore: 'fbneo', gameTitle: titleFromFileName(rom.name), status: `${titleFromFileName(rom.name)} · FBNeo` };
+    }
+    return {
+      romFile: rom,
+      biosFile: null,
+      biosMountPath: null,
+      emulatorCore: 'fbneo',
+      gameTitle: titleFromFileName(rom.name),
+      status: `${titleFromFileName(rom.name)} · Arcade (FBNeo). Neo Geo games also need neogeo.zip.`,
+    };
+  }
+
+  throw new Error('Unsupported file. Use SNES/NES/Genesis ROMs or an FBNeo arcade ZIP (plus neogeo.zip for Neo Geo).');
 }
 
 async function handleFiles(files) {
   const selection = ++state.sourceSelection;
-  const entries = [...files]; const rom = entries.find((f) => f.name.toLowerCase() === 'mslug2.zip'); const bios = entries.find((f) => f.name.toLowerCase() === 'neogeo.zip');
-  if (!rom || !bios) {
-    const missing = [!rom && 'mslug2.zip', !bios && 'neogeo.zip'].filter(Boolean).join(' and ');
-    state.gameReady = false; $('#setup-error').textContent = `Missing ${missing}. Select both original ZIP archives together.`;
-    updateSourceStatus(`Missing ${missing}.`, false); setCheck('#check-game', false, 'Files missing'); updateReady(); return;
+  try {
+    const detected = await detectGameSelection(files);
+    if (selection !== state.sourceSelection) return;
+    state.romFile = detected.romFile;
+    state.biosFile = detected.biosFile;
+    state.biosMountPath = detected.biosMountPath;
+    state.emulatorCore = detected.emulatorCore;
+    state.gameTitle = detected.gameTitle;
+    state.gameReady = true;
+    $('#setup-error').textContent = '';
+    setCheck('#check-game', true, 'Files selected');
+    updateSourceStatus(detected.status, true);
+    updateGamePresentation();
+    updateReady();
+  } catch (error) {
+    if (selection !== state.sourceSelection) return;
+    state.gameReady = false;
+    state.romFile = null;
+    state.biosFile = null;
+    state.biosMountPath = null;
+    state.emulatorCore = null;
+    const message = error instanceof Error ? error.message : 'Could not read the selected files.';
+    $('#setup-error').textContent = message;
+    updateSourceStatus(message, false);
+    setCheck('#check-game', false, 'Files missing');
+    updateReady();
   }
-  if (selection !== state.sourceSelection) return;
-  state.romFile = rom; state.biosFile = bios; state.gameTitle = 'Metal Slug 2'; state.gameReady = true;
-  $('#setup-error').textContent = ''; setCheck('#check-game', true, 'Files selected');
-  updateSourceStatus('Metal Slug 2 files selected. Compatibility is checked at launch.', true); updateGamePresentation(); updateReady();
 }
 
 async function loadDemo() {
@@ -384,11 +547,16 @@ async function loadDemo() {
   try {
     const response = await fetch('/demo/cps1frog.zip');
     if (!response.ok) throw new Error('The free test game could not be loaded.');
+    const payload = await response.blob();
     if (selection !== state.sourceSelection) return;
-    state.romFile = new File([await response.blob()], 'cps1frog.zip', { type: 'application/zip' });
-    state.biosFile = null; state.gameTitle = 'Frog Feast'; state.gameReady = true;
+    state.romFile = new File([payload], 'cps1frog.zip', { type: 'application/zip' });
+    state.biosFile = null; state.biosMountPath = null; state.emulatorCore = 'fbneo';
+    state.gameTitle = 'Frog Feast'; state.gameReady = true;
     setCheck('#check-game', true, 'Frog Feast ready');
     updateSourceStatus('Frog Feast is ready. No BIOS is required.', true); updateGamePresentation(); updateReady();
+  } catch (error) {
+    if (selection === state.sourceSelection) updateSourceStatus('The free test game could not be loaded. Check the connection and retry.', false);
+    throw error;
   } finally {
     document.querySelectorAll('[data-action="load-demo"]').forEach((button) => { button.disabled = false; });
   }
@@ -417,16 +585,21 @@ async function startGame() {
   }
   if (!state.gameReady || !state.peerConnected || !state.guestReady) return;
   state.control?.send(JSON.stringify({ type: 'prepare', gameTitle: state.gameTitle }));
-  show('loading');
-  $('#loading-title').textContent = `Preparing ${state.gameTitle}`;
-  $('#stage-connect').classList.add('done'); $('#stage-connect').textContent = 'Encrypted connection established';
-  await loadEmulator();
-  $('#stage-sync').classList.add('done'); $('#stage-sync').textContent = 'Game compatibility confirmed';
-  show('game');
-  $('#game-peer-label').textContent = 'Player 1 + Player 2'; $('#quality-pill').classList.remove('hidden');
-  state.mediaReady = false;
-  await maybeAttachStream(true);
-  await waitForMedia();
+  try {
+    show('loading');
+    $('#loading-title').textContent = `Preparing ${state.gameTitle}`;
+    $('#stage-connect').classList.add('done'); $('#stage-connect').textContent = 'Encrypted connection established';
+    await loadEmulator();
+    $('#stage-sync').classList.add('done'); $('#stage-sync').textContent = 'Game compatibility confirmed';
+    show('game');
+    $('#game-peer-label').textContent = 'Player 1 + Player 2'; $('#quality-pill').classList.remove('hidden');
+    if (!state.streamStarted) state.mediaReady = false;
+    await maybeAttachStream(true);
+    await waitForMedia();
+  } catch (error) {
+    try { if (state.control?.readyState === 'open') state.control.send(JSON.stringify({ type: 'start.failed' })); } catch { /* peer already gone */ }
+    throw error;
+  }
   $('#stage-ready').classList.add('done'); $('#stage-ready').textContent = 'Audio and video ready';
   state.control?.send(JSON.stringify({ type: 'start' }));
 }
@@ -458,20 +631,38 @@ function loadEmulator() {
         finish(new Error('The browser security policy blocked the emulator runtime.'));
       }
     };
+    const onRuntimeFailure = (event) => {
+      const reason = event.reason || event.error;
+      const message = reason?.message || String(reason || 'Unknown emulator error');
+      const stack = reason?.stack || '';
+      if (!/emulator(?:\.min)?\.js|loader\.js/.test(stack)) return;
+      if (/Failed to fetch/.test(message) && /checkForUpdates/.test(stack)) return;
+      event.preventDefault?.();
+      finish(new Error(`The emulator runtime stopped: ${message}`));
+    };
     const finish = (error) => {
       if (settled) return;
       settled = true; clearInterval(failurePoll); clearTimeout(timeout);
       document.removeEventListener('securitypolicyviolation', onPolicyViolation);
+      window.removeEventListener('unhandledrejection', onRuntimeFailure);
+      window.removeEventListener('error', onRuntimeFailure);
       delete window.EJS_ready; delete window.EJS_onGameStart;
       if (error) { state.emulatorLoaded = false; reject(error); }
       else { state.emulatorLoaded = true; $('#game-placeholder').classList.add('hidden'); resolve(); }
     };
 
     document.addEventListener('securitypolicyviolation', onPolicyViolation);
+    window.addEventListener('unhandledrejection', onRuntimeFailure);
+    window.addEventListener('error', onRuntimeFailure);
 
     window.EJS_player = '#emulator-player'; window.EJS_gameName = state.romFile.name; window.EJS_gameUrl = state.romFile;
-    if (state.biosFile) window.EJS_biosUrl = state.biosFile; else delete window.EJS_biosUrl;
-    window.EJS_core = 'fbneo'; window.EJS_pathtodata = '/emulatorjs/data/';
+    delete window.EJS_biosUrl;
+    if (state.biosFile && state.biosMountPath) {
+      // FBNeo needs Neo Geo BIOS as the named archive beside the game ROM. EmulatorJS's BIOS
+      // option extracts ZIPs, so stage the local file verbatim in the core filesystem instead.
+      window.EJS_externalFiles = { [state.biosMountPath]: state.biosFile };
+    } else delete window.EJS_externalFiles;
+    window.EJS_core = state.emulatorCore || 'fbneo'; window.EJS_pathtodata = '/emulatorjs/data/';
     window.EJS_startOnLoaded = true; window.EJS_color = '#315cf5'; window.EJS_language = 'en-US';
     window.EJS_ready = () => { $('#loading-note').textContent = 'Arcade core ready. Starting the game…'; };
     window.EJS_onGameStart = () => finish();
@@ -485,7 +676,7 @@ function loadEmulator() {
       }, 100);
     };
     document.body.append(script);
-    timeout = setTimeout(() => finish(new Error('The arcade took too long to start. Check the connection and try again.')), 30000);
+    timeout = setTimeout(() => finish(new Error('The arcade took too long to start. Check that the selected ROM and BIOS match this FBNeo build.')), 30000);
   }).finally(() => { emulatorBootPromise = null; });
 
   return emulatorBootPromise;
@@ -494,6 +685,10 @@ function loadEmulator() {
 async function maybeAttachStream(renegotiate = false) {
   if (state.role !== 'host' || !state.pc || !state.emulatorLoaded || state.streamStarted) return;
   const canvas = $('#emulator-player canvas'); if (!canvas?.captureStream) return;
+  // Capture only after the game view has laid out, otherwise the stream keeps
+  // the small mid-transition canvas resolution for the whole session.
+  window.EJS_emulator?.handleResize?.();
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   // EmulatorJS bridges its OpenAL/WebAudio graph into this capture stream,
   // giving the guest synchronized game audio without a screen-share prompt.
   let stream = null;
@@ -505,7 +700,16 @@ async function maybeAttachStream(renegotiate = false) {
     }
   }
   if (!stream?.getVideoTracks().length || !stream.getAudioTracks().length) throw new Error('Game audio did not initialize. Click the game once, then try again.');
+  // Pixel art turns to mush if the encoder downscales; ask it to keep detail
+  // and resolution and sacrifice framerate under load instead.
+  stream.getVideoTracks().forEach((track) => { track.contentHint = 'detail'; });
   stream.getTracks().forEach((track) => state.pc.addTrack(track, stream)); state.streamStarted = true;
+  for (const sender of state.pc.getSenders()) {
+    if (sender.track?.kind !== 'video') continue;
+    const parameters = sender.getParameters();
+    parameters.degradationPreference = 'maintain-resolution';
+    await sender.setParameters(parameters).catch(() => { /* hint only */ });
+  }
   if (renegotiate) { await state.pc.setLocalDescription(await state.pc.createOffer()); signal({ type: 'rtc.offer', description: state.pc.localDescription }); }
 }
 
@@ -524,6 +728,7 @@ function maybeReportMediaReady() {
   if (state.role === 'guest' && !video.paused && state.receivedTracks.has('audio') && state.receivedTracks.has('video') && state.control?.readyState === 'open') {
     state.control.send(JSON.stringify({ type: 'media.ready' }));
     $('#sound-gate').classList.add('hidden');
+    $('#game-placeholder').classList.add('hidden');
   }
 }
 
@@ -566,7 +771,9 @@ function showConnectionOverlay(mode) {
 }
 
 function retryConnection() {
-  state.reconnectAttempts = 0; showConnectionOverlay('reconnecting'); restartConnection();
+  state.reconnectAttempts = 0; showConnectionOverlay('reconnecting');
+  if (state.roomId && state.ws?.readyState !== WebSocket.OPEN) { state.wsRetries = 0; connectSignaling(); }
+  restartConnection();
 }
 
 function startPing() {
@@ -617,6 +824,7 @@ async function resetGuestSeat() {
   sessionStorage.setItem(`quarterlink.invite.${state.roomId}`, state.inviteSecret);
   state.pc?.close(); state.pc = null; state.control = null; state.input = null;
   state.peerConnected = false; state.guestReady = false; state.guestDeviceReady = false;
+  state.streamStarted = false; state.mediaReady = false; state.pendingIce = []; state.reconnectAttempts = 0;
   updateGuest(null); updateReady();
   toast('Player two removed. A fresh invite link is ready.');
 }
@@ -630,6 +838,7 @@ function toggleSheet(id, open) {
   const node = $(id); node.classList.toggle('hidden', !open);
   if (id === '#diagnostics') $('#quality-pill').setAttribute('aria-expanded', String(open));
   if (id === '#game-menu-panel') $('[data-action="game-menu"]').setAttribute('aria-expanded', String(open));
+  if (!open) focusGameSurface();
 }
 
 function requestEndSession() {
@@ -651,7 +860,9 @@ function requestGuestRemoval() {
 $('#confirm-dialog').addEventListener('close', (event) => {
   if (event.target.returnValue === 'confirm') Promise.resolve(state.confirmAction?.()).catch((error) => toast(error.message));
   state.confirmAction = null;
+  focusGameSurface();
 });
+$('#controls-dialog').addEventListener('close', focusGameSurface);
 
 document.addEventListener('click', (event) => {
   const action = event.target.closest('[data-action]')?.dataset.action; if (!action) return;
@@ -675,7 +886,12 @@ document.addEventListener('click', (event) => {
   if (action === 'show-diagnostics') { toggleSheet('#game-menu-panel', false); toggleSheet('#diagnostics', true); }
   if (action === 'close-diagnostics') toggleSheet('#diagnostics', false);
   if (action === 'open-controls') { toggleSheet('#game-menu-panel', false); openControls(); }
-  if (action === 'dismiss-toast') $('#toast').classList.remove('show');
+  if (action === 'dismiss-toast') { $('#toast').classList.remove('show'); focusGameSurface(); }
+});
+window.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  if (!$('#diagnostics').classList.contains('hidden')) toggleSheet('#diagnostics', false);
+  if (!$('#game-menu-panel').classList.contains('hidden')) toggleSheet('#game-menu-panel', false);
 });
 $('#quality-pill').addEventListener('click', () => toggleSheet('#diagnostics', $('#diagnostics').classList.contains('hidden')));
 $('#game-files').addEventListener('change', (event) => handleFiles(event.target.files));

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QuarterLink Saloon Prototype</title>
+  <link rel="stylesheet" href="prototype.css">
+</head>
+<body>
+  <header class="prototype-bar">
+    <div>
+      <strong>QuarterLink Saloon</strong>
+      <span>Dynamic concept prototype</span>
+    </div>
+    <nav aria-label="Prototype controls">
+      <button type="button" data-command="path" data-path="solo">▶ Solo walkthrough</button>
+      <button type="button" data-command="path" data-path="friends">▶ Friend walkthrough</button>
+      <button type="button" data-command="toggle-hotspots" aria-pressed="false">Show hotspots</button>
+      <a href="state-flow.svg" target="_blank">Open whiteboard</a>
+    </nav>
+  </header>
+
+  <main>
+    <aside class="story-rail" aria-label="Prototype path">
+      <p class="eyebrow">CURRENT PATH</p>
+      <h1 id="path-title">Choose a path</h1>
+      <p id="screen-note">Click Play Solo or Play Together on the concept screen.</p>
+      <ol id="path-steps"></ol>
+      <div class="rail-actions">
+        <button type="button" data-command="back">← Back</button>
+        <button type="button" data-command="restart">Restart</button>
+      </div>
+      <details>
+        <summary>Bounding box</summary>
+        <pre id="bbox-readout">Select or reveal a hotspot.</pre>
+      </details>
+    </aside>
+
+    <section class="device" aria-label="Interactive prototype canvas">
+      <div class="device-top"><i></i><i></i><i></i><span>quarterlink concept</span></div>
+      <div id="stage" class="stage" tabindex="0" aria-live="polite">
+        <div id="art" class="art"></div>
+        <div id="hotspots" class="hotspots"></div>
+        <div id="tap" class="tap-indicator" aria-hidden="true"></div>
+      </div>
+      <p class="hint">Clickable regions are image-relative normalized bounding boxes.</p>
+    </section>
+  </main>
+
+  <script src="prototype.js"></script>
+</body>
+</html>

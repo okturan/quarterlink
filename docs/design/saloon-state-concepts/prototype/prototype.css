@@ -1,0 +1,41 @@
+:root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; --cream:#f3e8d2; --ink:#19160f; --navy:#132238; --gold:#d49a2a; --oxblood:#7a201d; --green:#1e4a34; }
+* { box-sizing: border-box; }
+body { margin:0; min-height:100vh; background:#11100d; color:#f5f0e7; }
+button, a { font:inherit; }
+.prototype-bar { height:72px; padding:12px 22px; display:flex; align-items:center; justify-content:space-between; gap:18px; background:#191713; border-bottom:1px solid #3a3429; }
+.prototype-bar div { display:grid; gap:2px; }
+.prototype-bar strong { font-family:Georgia,serif; font-size:20px; color:var(--cream); }
+.prototype-bar span { color:#a79d8c; font-size:12px; }
+.prototype-bar nav { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; }
+.prototype-bar button,.prototype-bar a,.rail-actions button { border:1px solid #554b3c; color:#eee5d5; background:#28241d; padding:9px 12px; border-radius:8px; text-decoration:none; cursor:pointer; }
+.prototype-bar button:hover,.prototype-bar a:hover,.rail-actions button:hover { border-color:#b68a42; background:#342d22; }
+main { display:grid; grid-template-columns:260px minmax(0,1fr); gap:22px; padding:22px; min-height:calc(100vh - 72px); }
+.story-rail { padding:18px; background:#191713; border:1px solid #3a3429; border-radius:14px; align-self:start; position:sticky; top:18px; }
+.eyebrow { color:#bc985d; font-size:10px; letter-spacing:.16em; font-weight:800; }
+.story-rail h1 { font:700 25px/1.1 Georgia,serif; margin:8px 0; }
+.story-rail>p:not(.eyebrow) { color:#b7ad9d; font-size:13px; line-height:1.45; }
+#path-steps { margin:22px 0; padding:0; list-style:none; display:grid; gap:8px; }
+#path-steps li { color:#8c8375; font-size:12px; padding:9px 10px; border-left:2px solid #494238; }
+#path-steps li.done { color:#c4b9a7; border-color:#6f6a58; }
+#path-steps li.current { color:#fff7e9; background:#2b261e; border-color:var(--gold); }
+.rail-actions { display:flex; gap:8px; }
+details { margin-top:20px; color:#a99d8b; font-size:12px; }
+pre { white-space:pre-wrap; color:#e4d6bd; background:#0d0c0a; padding:10px; border-radius:8px; overflow:auto; }
+.device { min-width:0; align-self:start; background:#050505; border:1px solid #3a3429; border-radius:16px; box-shadow:0 25px 70px #0009; overflow:hidden; }
+.device-top { height:38px; background:#292826; display:flex; align-items:center; gap:7px; padding:0 14px; color:#8e8980; font-size:11px; }
+.device-top i { width:9px; height:9px; border-radius:50%; background:#6b6255; }
+.device-top i:first-child { background:#91403a; }.device-top i:nth-child(2){background:#9b7735}.device-top i:nth-child(3){background:#48684c}.device-top span{margin:auto; transform:translateX(-25px)}
+.stage { position:relative; width:100%; aspect-ratio:16/9; background:#0a0907; overflow:hidden; outline:none; }
+.art { position:absolute; inset:0; overflow:hidden; transition:opacity .18s ease, transform .35s cubic-bezier(.2,.8,.2,1); }
+.art.enter { opacity:.15; transform:scale(1.025); }
+.art img { position:absolute; max-width:none; user-select:none; pointer-events:none; }
+.hotspots { position:absolute; inset:0; }
+.hotspot { position:absolute; appearance:none; border:0; background:transparent; cursor:pointer; border-radius:9px; }
+.hotspot:hover,.hotspot:focus-visible,.show-hotspots .hotspot { outline:3px solid #ffd057; background:#ffd05722; }
+.hotspot::after { content:attr(data-label); position:absolute; left:50%; top:-31px; transform:translateX(-50%); background:#15120d; color:#ffe6a8; border:1px solid #d49a2a; border-radius:5px; padding:5px 7px; font-size:11px; white-space:nowrap; opacity:0; pointer-events:none; }
+.show-hotspots .hotspot::after,.hotspot:hover::after,.hotspot:focus-visible::after { opacity:1; }
+.tap-indicator { position:absolute; width:40px; height:40px; border:3px solid #ffe4a3; border-radius:50%; opacity:0; transform:translate(-50%,-50%) scale(.4); pointer-events:none; }
+.tap-indicator.play { animation:tap .55s ease-out; }
+@keyframes tap { 0%{opacity:0;transform:translate(-50%,-50%) scale(.25)} 25%{opacity:1} 100%{opacity:0;transform:translate(-50%,-50%) scale(1.5)} }
+.hint { margin:0; padding:10px 14px; color:#756e63; font-size:11px; text-align:center; background:#12110f; }
+@media(max-width:850px){.prototype-bar{height:auto;align-items:flex-start}.prototype-bar nav{justify-content:flex-start}main{grid-template-columns:1fr}.story-rail{position:static}.device{order:-1}}

@@ -6,6 +6,10 @@ The earlier `quarterlink-desktop-direction.png` and `quarterlink-mobile-states.p
 
 These are direction boards, not production screenshots. The application implements the system with semantic HTML and CSS rather than embedding the generated artwork.
 
+## Future arcade-saloon exploration
+
+[`saloon-state-concepts/README.md`](saloon-state-concepts/README.md) maps the complete visible state surface—including unhappy paths—and links twelve GPT-generated concept boards for a possible future arcade-saloon redesign. That exploration uses warm timber, painted MDF cabinet construction, brass hardware, and original fictional game artwork without neon. It does not replace the current product direction or describe the implemented UI.
+
 ## Current direction prompt
 
 Create a complete, shippable light product interface for QuarterLink across landing, solo source selection, friend-room creation, invite join, two-seat lobby, loading, browser sound activation, gameplay, controller testing, diagnostics, reconnect recovery, end-session confirmation, toast, and responsive mobile states. Use warm off-white pages, crisp white cards, charcoal/slate type, one restrained cobalt action color, soft sage success, muted coral errors, hairline borders, subtle shadows, generous spacing, and mature product typography. Avoid dark themes, neon, glow, cyberpunk, CRT styling, pixel fonts, arcade-cabinet illustration, glassmorphism, fake devices, fabricated measurements, or copyrighted game art.

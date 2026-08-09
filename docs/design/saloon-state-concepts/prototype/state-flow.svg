@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0 0L9 3 0 6z" fill="#a8782b"/></marker><style>text{font-family:Inter,Arial,sans-serif}.title{font:700 35px Georgia,serif;fill:#f3e8d2}.lane{font-weight:800;fill:#d4a44a;letter-spacing:2px}.node{fill:#f3e8d2;stroke:#7c6647;stroke-width:2}.label{font-weight:700;fill:#201b14}.sub{font-size:13px;fill:#655746}.line{fill:none;stroke:#a8782b;stroke-width:3;marker-end:url(#arrow)}.branch{fill:none;stroke:#7a201d;stroke-width:2;stroke-dasharray:8 7;marker-end:url(#arrow)}</style></defs>
+  <rect width="1600" height="900" fill="#15130f"/><text x="70" y="70" class="title">QuarterLink saloon prototype — interaction whiteboard</text>
+  <text x="70" y="150" class="lane">ENTRY</text><text x="70" y="340" class="lane">SOLO HAPPY PATH</text><text x="70" y="565" class="lane">FRIEND HOST HAPPY PATH</text><text x="70" y="790" class="lane">RECOVERY BRANCHES</text>
+  <g id="nodes">
+    <g transform="translate(300 105)"><rect class="node" width="220" height="92" rx="14"/><text x="110" y="38" text-anchor="middle" class="label">Landing</text><text x="110" y="63" text-anchor="middle" class="sub">3 entry actions</text></g>
+    <g transform="translate(620 105)"><rect class="node" width="220" height="92" rx="14"/><text x="110" y="38" text-anchor="middle" class="label">Join form</text><text x="110" y="63" text-anchor="middle" class="sub">complete link + name</text></g>
+    <g transform="translate(940 105)"><rect class="node" width="220" height="92" rx="14"/><text x="110" y="38" text-anchor="middle" class="label">Guest lobby</text><text x="110" y="63" text-anchor="middle" class="sub">ready, wait for host</text></g>
+    <g transform="translate(300 295)"><rect class="node" width="190" height="92" rx="14"/><text x="95" y="38" text-anchor="middle" class="label">Solo source</text><text x="95" y="63" text-anchor="middle" class="sub">demo ready</text></g>
+    <g transform="translate(570 295)"><rect class="node" width="190" height="92" rx="14"/><text x="95" y="38" text-anchor="middle" class="label">Local loader</text><text x="95" y="63" text-anchor="middle" class="sub">no network</text></g>
+    <g transform="translate(840 295)"><rect class="node" width="190" height="92" rx="14"/><text x="95" y="38" text-anchor="middle" class="label">Solo game</text><text x="95" y="63" text-anchor="middle" class="sub">local shell</text></g>
+    <g transform="translate(1110 295)"><rect class="node" width="190" height="92" rx="14"/><text x="95" y="38" text-anchor="middle" class="label">Menu / end</text><text x="95" y="63" text-anchor="middle" class="sub">confirm or cancel</text></g>
+    <g transform="translate(300 520)"><rect class="node" width="180" height="92" rx="14"/><text x="90" y="38" text-anchor="middle" class="label">Source choice</text><text x="90" y="63" text-anchor="middle" class="sub">hosted recommended</text></g>
+    <g transform="translate(540 520)"><rect class="node" width="180" height="92" rx="14"/><text x="90" y="38" text-anchor="middle" class="label">Hosted catalog</text><text x="90" y="63" text-anchor="middle" class="sub">search + filters</text></g>
+    <g transform="translate(780 520)"><rect class="node" width="180" height="92" rx="14"/><text x="90" y="38" text-anchor="middle" class="label">Game details</text><text x="90" y="63" text-anchor="middle" class="sub">always ready</text></g>
+    <g transform="translate(1020 520)"><rect class="node" width="180" height="92" rx="14"/><text x="90" y="38" text-anchor="middle" class="label">Persistent room</text><text x="90" y="63" text-anchor="middle" class="sub">shelf + invite</text></g>
+    <g transform="translate(1260 520)"><rect class="node" width="180" height="92" rx="14"/><text x="90" y="38" text-anchor="middle" class="label">Ready → play</text><text x="90" y="63" text-anchor="middle" class="sub">loader + details</text></g>
+    <g transform="translate(300 745)"><rect class="node" width="220" height="92" rx="14"/><text x="110" y="38" text-anchor="middle" class="label">Invite unavailable</text><text x="110" y="63" text-anchor="middle" class="sub">invalid / expired / full</text></g>
+    <g transform="translate(650 745)"><rect class="node" width="220" height="92" rx="14"/><text x="110" y="38" text-anchor="middle" class="label">Start failure</text><text x="110" y="63" text-anchor="middle" class="sub">source retained</text></g>
+    <g transform="translate(1000 745)"><rect class="node" width="220" height="92" rx="14"/><text x="110" y="38" text-anchor="middle" class="label">Reconnect</text><text x="110" y="63" text-anchor="middle" class="sub">3 attempts → retry/end</text></g>
+  </g>
+  <path class="line" d="M520 151H620"/><path class="line" d="M840 151H940"/>
+  <path class="line" d="M490 341H570"/><path class="line" d="M760 341H840"/><path class="line" d="M1030 341H1110"/>
+  <path class="line" d="M480 566H540"/><path class="line" d="M720 566H780"/><path class="line" d="M960 566H1020"/><path class="line" d="M1200 566H1260"/>
+  <path class="branch" d="M730 197V700Q730 790 650 790"/><path class="branch" d="M665 387V700Q665 790 650 790"/><path class="branch" d="M1350 612V690Q1350 790 1220 790"/>
+  <path class="line" d="M410 197V275"/><path class="line" d="M410 197Q210 280 300 566"/>
+</svg>

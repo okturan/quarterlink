@@ -9,14 +9,15 @@
 ## Current playable path
 
 - Solo mode runs the selected game entirely in the local browser without creating a room or network connection.
-- Metal Slug 2 runs in the host browser using a pinned FBNeo WebAssembly core.
+- Local files are detected into SNES (snes9x), NES (fceumm), Genesis (genesis_plus_gx), or arcade (FBNeo) cores.
+- Neo Geo arcade sets still need a user-supplied `neogeo.zip` BIOS beside the game ZIP.
 - The guest joins without an account or installation.
 - Guest controller input travels directly to the host over an unordered WebRTC data channel.
 - The authoritative game canvas and emulator audio stream directly back to the guest.
 - Cloudflare Durable Objects coordinate single-use invites and WebRTC signaling only; gameplay does not travel through the Worker.
 - The in-game HUD measures peer data-channel RTT and jitter rather than misleading API latency.
 
-The host supplies `mslug2.zip` and `neogeo.zip` in the room. Files remain local and are never uploaded. QuarterLink does not contain or distribute game ROMs.
+The host supplies local game files in the room. Files remain local and are never uploaded. QuarterLink does not contain or distribute commercial game ROMs.
 
 For hardware and connection testing without proprietary files, the room also offers Frog Feast, a freely distributable two-player CPS-1 homebrew game. Its source, transformation, hashes, and permission notice are recorded in [`public/demo/NOTICE.md`](public/demo/NOTICE.md).
 

@@ -1,7 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
 
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
-const SESSION_COOKIE = "ql_session";
+// One cookie per room so a browser can hold a host seat and a guest seat in
+// different rooms (or tabs) without the sessions overwriting each other.
+const SESSION_COOKIE_PREFIX = "ql_s_";
 const ROOM_TTL_MS = 2 * 60 * 60 * 1000;
 
 type Role = "host" | "guest";
@@ -21,6 +23,7 @@ function json(value: unknown, init: ResponseInit = {}): Response {
 
 function securityHeaders(response: Response): Response {
 	const headers = new Headers(response.headers);
+	headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
 	headers.set("Cross-Origin-Opener-Policy", "same-origin");
 	headers.set("Cross-Origin-Embedder-Policy", "require-corp");
 	headers.set("Cross-Origin-Resource-Policy", "same-origin");
@@ -42,14 +45,23 @@ async function sha256(value: string): Promise<string> {
 	return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function cookieValue(request: Request): string | null {
+function sameToken(a: string | undefined, b: string): boolean {
+	if (typeof a !== "string") return false;
+	const encoder = new TextEncoder();
+	const bufA = encoder.encode(a);
+	const bufB = encoder.encode(b);
+	if (bufA.byteLength !== bufB.byteLength) return false;
+	return crypto.subtle.timingSafeEqual(bufA, bufB);
+}
+
+function cookieValue(request: Request, roomId: string): string | null {
 	const cookie = request.headers.get("cookie") ?? "";
-	const match = cookie.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([^;]+)`));
+	const match = cookie.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE_PREFIX}${roomId}=([^;]+)`));
 	return match?.[1] ?? null;
 }
 
-function sessionCookie(session: string): string {
-	return `${SESSION_COOKIE}=${session}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=7200`;
+function sessionCookie(roomId: string, session: string): string {
+	return `${SESSION_COOKIE_PREFIX}${roomId}=${session}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=7200`;
 }
 
 function validName(value: unknown): string | null {
@@ -63,6 +75,8 @@ export class GameRoom extends DurableObject<Env> {
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
+		// Answered by the runtime without waking a hibernated instance; keeps idle signaling sockets alive through proxies and NATs.
+		this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('{"type":"ws.ping"}', '{"type":"ws.pong"}'));
 		for (const socket of this.ctx.getWebSockets()) {
 			const attachment = socket.deserializeAttachment() as { role?: Role } | null;
 			if (attachment?.role) this.sockets.set(socket, attachment.role);
@@ -91,7 +105,7 @@ export class GameRoom extends DurableObject<Env> {
 		const room = await this.state();
 		if (!room || room.expiresAt < Date.now()) return { ok: false, error: "expired" };
 		if (room.inviteUsed || room.peers.guest) return { ok: false, error: "full" };
-		if ((await sha256(secret)) !== room.inviteHash) return { ok: false, error: "invalid" };
+		if (!sameToken(await sha256(secret), room.inviteHash)) return { ok: false, error: "invalid" };
 		room.inviteUsed = true;
 		room.peers.guest = guest;
 		room.phase = "connecting";
@@ -102,7 +116,7 @@ export class GameRoom extends DurableObject<Env> {
 
 	async rotateInvite(session: string): Promise<{ secret: string } | null> {
 		const room = await this.state();
-		if (!room || room.peers.host?.session !== session || room.peers.guest) return null;
+		if (!room || !sameToken(room.peers.host?.session, session) || room.peers.guest) return null;
 		const secret = randomToken(24);
 		room.inviteHash = await sha256(secret);
 		room.inviteUsed = false;
@@ -112,7 +126,7 @@ export class GameRoom extends DurableObject<Env> {
 
 	async removeGuest(session: string): Promise<{ secret: string } | null> {
 		const room = await this.state();
-		if (!room || room.peers.host?.session !== session || !room.peers.guest) return null;
+		if (!room || !sameToken(room.peers.host?.session, session) || !room.peers.guest) return null;
 		delete room.peers.guest;
 		room.phase = "waiting";
 		room.inviteUsed = false;
@@ -131,7 +145,7 @@ export class GameRoom extends DurableObject<Env> {
 	async snapshot(session: string): Promise<{ room: Omit<RoomState, "inviteHash" | "peers"> & { peers: Partial<Record<Role, Omit<Peer, "session">>> }; role: Role } | null> {
 		const room = await this.state();
 		if (!room) return null;
-		const role = room.peers.host?.session === session ? "host" : room.peers.guest?.session === session ? "guest" : null;
+		const role = sameToken(room.peers.host?.session, session) ? "host" : sameToken(room.peers.guest?.session, session) ? "guest" : null;
 		if (!role) return null;
 		const { inviteHash: _inviteHash, peers, ...safeRoom } = room;
 		const publicPeers: Partial<Record<Role, Omit<Peer, "session">>> = {};
@@ -215,8 +229,10 @@ export class GameRoom extends DurableObject<Env> {
 	}
 
 	async webSocketError(socket: WebSocket): Promise<void> {
+		const role = this.sockets.get(socket);
 		this.sockets.delete(socket);
 		try { socket.close(1011, "Connection error"); } catch { /* already closed */ }
+		if (role && !Array.from(this.sockets.values()).includes(role)) this.broadcast({ type: "peer.disconnected", role });
 	}
 
 	async alarm(): Promise<void> {
@@ -237,23 +253,23 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
 		const inviteSecret = randomToken(24);
 		const session = randomToken(24);
 		await env.GAME_ROOMS.getByName(roomId).initialize(await sha256(inviteSecret), { session, name, role: "host", ready: false });
-		return json({ roomId, inviteSecret }, { status: 201, headers: { "set-cookie": sessionCookie(session) } });
+		return json({ roomId, inviteSecret }, { status: 201, headers: { "set-cookie": sessionCookie(roomId, session) } });
 	}
 
 	const redeemMatch = url.pathname.match(/^\/api\/rooms\/([A-Za-z0-9_-]+)\/redeem$/);
 	if (redeemMatch && request.method === "POST") {
 		const body: { name?: unknown; secret?: unknown } = await request.json<{ name?: unknown; secret?: unknown }>().catch(() => ({}));
 		const name = validName(body.name);
-		if (!name || typeof body.secret !== "string") return json({ error: "Name and invite are required." }, { status: 400 });
+		if (!name || typeof body.secret !== "string" || body.secret.length === 0 || body.secret.length > 256) return json({ error: "Name and invite are required." }, { status: 400 });
 		const session = randomToken(24);
 		const result = await env.GAME_ROOMS.getByName(redeemMatch[1]).redeem(body.secret, { session, name, role: "guest", ready: false });
 		if (!result.ok) return json({ error: result.error }, { status: result.error === "full" ? 409 : 403 });
-		return json({ ok: true }, { headers: { "set-cookie": sessionCookie(session) } });
+		return json({ ok: true }, { headers: { "set-cookie": sessionCookie(redeemMatch[1], session) } });
 	}
 
 	const roomMatch = url.pathname.match(/^\/api\/rooms\/([A-Za-z0-9_-]+)$/);
 	if (roomMatch && request.method === "GET") {
-		const session = cookieValue(request);
+		const session = cookieValue(request, roomMatch[1]);
 		if (!session) return json({ error: "Unauthorized" }, { status: 401 });
 		const snapshot = await env.GAME_ROOMS.getByName(roomMatch[1]).snapshot(session);
 		return snapshot ? json(snapshot) : json({ error: "Forbidden" }, { status: 403 });
@@ -261,7 +277,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
 
 	const inviteMatch = url.pathname.match(/^\/api\/rooms\/([A-Za-z0-9_-]+)\/invite$/);
 	if (inviteMatch && request.method === "POST") {
-		const session = cookieValue(request);
+		const session = cookieValue(request, inviteMatch[1]);
 		if (!session) return json({ error: "Unauthorized" }, { status: 401 });
 		const result = await env.GAME_ROOMS.getByName(inviteMatch[1]).rotateInvite(session);
 		return result ? json(result) : json({ error: "Invite cannot be rotated" }, { status: 409 });
@@ -269,7 +285,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
 
 	const guestMatch = url.pathname.match(/^\/api\/rooms\/([A-Za-z0-9_-]+)\/guest$/);
 	if (guestMatch && request.method === "DELETE") {
-		const session = cookieValue(request);
+		const session = cookieValue(request, guestMatch[1]);
 		if (!session) return json({ error: "Unauthorized" }, { status: 401 });
 		const result = await env.GAME_ROOMS.getByName(guestMatch[1]).removeGuest(session);
 		return result ? json(result) : json({ error: "Guest cannot be removed" }, { status: 409 });
@@ -277,18 +293,25 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
 
 	const iceMatch = url.pathname.match(/^\/api\/rooms\/([A-Za-z0-9_-]+)\/ice$/);
 	if (iceMatch && request.method === "POST") {
-		const session = cookieValue(request);
+		const session = cookieValue(request, iceMatch[1]);
 		if (!session || !(await env.GAME_ROOMS.getByName(iceMatch[1]).snapshot(session))) return json({ error: "Unauthorized" }, { status: 401 });
 		const turnKeyId = Reflect.get(env, "TURN_KEY_ID");
 		const turnKeyToken = Reflect.get(env, "TURN_KEY_TOKEN");
 		if (typeof turnKeyId !== "string" || typeof turnKeyToken !== "string") {
 			return json({ iceServers: [{ urls: ["stun:stun.cloudflare.com:3478"] }], relayAvailable: false });
 		}
-		const response = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(turnKeyId)}/credentials/generate-ice-servers`, {
-			method: "POST",
-			headers: { authorization: `Bearer ${turnKeyToken}`, "content-type": "application/json" },
-			body: JSON.stringify({ ttl: 7200 }),
-		});
+		let response: Response;
+		try {
+			response = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(turnKeyId)}/credentials/generate-ice-servers`, {
+				method: "POST",
+				headers: { authorization: `Bearer ${turnKeyToken}`, "content-type": "application/json" },
+				body: JSON.stringify({ ttl: 7200 }),
+				signal: AbortSignal.timeout(10_000),
+			});
+		} catch {
+			console.error(JSON.stringify({ event: "turn_mint_failed", status: "unreachable" }));
+			return json({ iceServers: [{ urls: ["stun:stun.cloudflare.com:3478"] }], relayAvailable: false });
+		}
 		if (response.status !== 201) {
 			console.error(JSON.stringify({ event: "turn_mint_failed", status: response.status }));
 			return json({ iceServers: [{ urls: ["stun:stun.cloudflare.com:3478"] }], relayAvailable: false });
@@ -306,7 +329,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
 	if (wsMatch) {
 		const origin = request.headers.get("origin");
 		if (origin !== url.origin) return new Response("Forbidden origin", { status: 403 });
-		const session = cookieValue(request);
+		const session = cookieValue(request, wsMatch[1]);
 		if (!session) return new Response("Unauthorized", { status: 401 });
 		const headers = new Headers(request.headers);
 		headers.set("x-quarterlink-session", session);
@@ -322,7 +345,7 @@ export default {
 		try {
 			let response: Response;
 			if (url.pathname.startsWith("/api/")) response = await api(request, env, url);
-			else if (request.method === "GET" && (url.pathname === "/" || url.pathname.startsWith("/join/") || url.pathname.startsWith("/room/"))) {
+			else if (["GET", "HEAD"].includes(request.method) && (url.pathname === "/" || url.pathname.startsWith("/join/") || url.pathname.startsWith("/room/"))) {
 				const shellUrl = new URL("/quarterlink-shell-v3.html", url.origin);
 				response = await env.ASSETS.fetch(new Request(shellUrl, request));
 			} else response = await env.ASSETS.fetch(request);

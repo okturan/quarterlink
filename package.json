@@ -9,6 +9,7 @@
 		"cf-typegen": "wrangler types",
 		"check": "npm run cf-typegen && tsc --noEmit && wrangler deploy --dry-run",
 		"smoke:browser": "node scripts/smoke-browser.mjs",
+		"smoke:mp": "node scripts/smoke-multiplayer.mjs",
 		"smoke:prod": "node scripts/smoke-production.mjs",
 		"test": "node --test tests/*.test.mjs"
 	},
